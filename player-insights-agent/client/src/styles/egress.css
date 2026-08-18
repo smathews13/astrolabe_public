@@ -1,0 +1,86 @@
+/*
+ * The egress panel: three stacked lists on the Settings page.
+ *
+ * Written against the astrolabe tokens rather than the DuBois set, because this
+ * surface is new. Nothing here restates a rule `settings.css` already carries --
+ * the rows reuse `.settings-row` and `.settings-row-label`, and only the parts
+ * those two do not cover are declared. A second opinion about row geometry is how
+ * a page ends up with two kinds of row that are nearly the same.
+ */
+
+/* A row that is a list item rather than a single control, so it needs its own
+   rhythm: `.settings-row` is one row in a card and these come in eights. */
+.egress-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ast-hairline);
+}
+
+.egress-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.egress-row:first-child {
+  padding-top: 0;
+}
+
+/* The label and its facts, which must not be pushed around by the switch beside
+   them when a pill makes one row taller than the next. */
+.egress-row-body {
+  min-width: 0;
+}
+
+/* The pill sits on the label line, and a label with a pill on it must not ride
+   up when the pill is taller than the text. */
+.egress-row .settings-row-label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/*
+ * The facts line: where the affordance is, how many items, what the catalog
+ * carries. Joined by ' · ' in the component rather than by a rule, because these
+ * are separate strings decided in `egress-panel.ts` and generated content cannot
+ * sit between array members.
+ */
+.egress-facts {
+  margin: 2px 0 0;
+  font-size: var(--ast-fs-12);
+  color: var(--ast-text-secondary);
+  max-width: 60ch;
+}
+
+.egress-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.egress-log-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ast-hairline);
+}
+
+.egress-log-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.egress-log-row:first-child {
+  padding-top: 0;
+}
+
+/* Right-aligned meta, which is the placement rule that puts a figure in DM Mono.
+   `.ast-num` carries the family; this is the slot. */
+.egress-when {
+  flex: none;
+  font-size: var(--ast-fs-12);
+  color: var(--ast-text-secondary);
+  white-space: nowrap;
+}

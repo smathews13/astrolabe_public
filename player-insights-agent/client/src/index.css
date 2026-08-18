@@ -1,0 +1,131 @@
+@import '@databricks/appkit-ui/styles.css';
+@import './styles/fonts.css';
+
+/*
+ * The app's own stylesheet, as partials rather than one 2,898-line file.
+ *
+ * There is deliberately no count in this comment. It said "nineteen" for exactly
+ * as long as it took the next two screens to land, and a number that has to be
+ * corrected by whoever adds a file is a number nobody corrects.
+ *
+ * THE ORDER OF THESE IMPORTS IS THE CASCADE. Several rules in here settle a
+ * conflict by coming last rather than by scoring higher -- the destructive-alert
+ * block at the end of alerts.css outranks the neutral `[data-slot='alert']` rule
+ * in shell.css on nothing but position -- so moving an import is a repaint, not a
+ * tidy-up. The split was made by slicing the previous single file at line
+ * boundaries and nothing else: concatenating the first nineteen of these in this
+ * order reproduced its body byte for byte. Everything imported after them is new
+ * work rather than a slice of the old file.
+ *
+ * The names describe where the rules live on screen, but the file's own order
+ * wins over the naming wherever the two disagree, and in a few places they do:
+ * the global alert slots sit inside shell.css, the two responsive blocks that
+ * reshape half the app are their own partial rather than living with the rules
+ * they modify, and answer-body.css carries the shared overflow-wrap list because
+ * it was written between the chart rules and the source strip. Each is noted
+ * again where it sits.
+ *
+ * `@import` has to precede every other rule, which is why these come above the
+ * `@custom-variant` below rather than after it. That directive declares a
+ * Tailwind variant and emits no CSS of its own, so it has no cascade position to
+ * lose.
+ */
+@import './styles/tokens.css';
+/*
+ * MOVED HERE FROM THE END, and the file it moved past told the next person to do
+ * exactly this. Its old position carried the note "they have no cascade position
+ * to fight over ... which will stop being true the moment a rule in here paints
+ * something, and whoever writes that rule should move the import to where it
+ * belongs and say why".
+ *
+ * `.ast-pill` now paints. It is the one status recipe every surface composes
+ * with -- `ast-pill ast-pill--pos ops-pill` and so on -- and a surface that adds
+ * a layout delta beside it, a nowrap or a baseline alignment, has to be able to
+ * win that tie. From the end of the list it could not: `.ast-pill`'s own
+ * `align-items: center` outranked `.ops-pill`'s `align-items: baseline` on
+ * position alone, at equal specificity, and the state words on the Ops block
+ * heads dropped off their line.
+ *
+ * So it sits with tokens.css, which is what it is: a vocabulary the page
+ * partials below are entitled to reshape. astrolabe-animation.css stays where it
+ * was, because keyframes have no cascade position to lose and nothing seats them
+ * from here.
+ */
+@import './styles/astrolabe-tokens.css';
+@import './styles/base.css';
+/* Early, and deliberately so. The product marks are a primitive rather than a
+   screen: they render on eight of them, and every page partial below is entitled
+   to reshape one where its own layout needs to -- which it can only do from
+   after this. Nothing in here declares a colour, so it has no repaint to lose by
+   sitting where it loses ties. */
+@import './styles/brand.css';
+@import './styles/shell.css';
+@import './styles/rail.css';
+@import './styles/ask.css';
+@import './styles/answer.css';
+@import './styles/composer.css';
+@import './styles/answer-body.css';
+/* Before trace.css, which is the partial that seats both constellation bands: the
+   trace surfaces are entitled to reshape a band where their own layout needs to --
+   the map's sits above a grid and the live path's sits in a 264px rail -- and they
+   can only do that from after this. */
+@import './styles/constellation.css';
+@import './styles/trace.css';
+@import './styles/page-shell.css';
+@import './styles/benchmark.css';
+@import './styles/runs.css';
+@import './styles/timeline.css';
+@import './styles/connections.css';
+@import './styles/architecture.css';
+@import './styles/settings.css';
+/* Directly after settings.css, because the panel it styles is mounted inside that
+   page and reuses its row rules. It declares only what those do not cover, so
+   ordering it here means a later change to a settings row still reaches it. */
+@import './styles/egress.css';
+/* Before the two pages that import the control, so either can override a rule
+   here rather than being overridden by it. Its own partial because the control
+   is shared: a copy in one page's partial is a rule the other page does not get. */
+@import './styles/time-range.css';
+/* With the other page partials and before responsive.css, which is where the
+   blocks that reshape a page for a narrow window are meant to be able to win. */
+@import './styles/monitoring.css';
+/* Beside monitoring.css and before responsive.css, for the same reason: the
+   blocks that reshape a page for a narrow window are meant to be able to win. */
+@import './styles/ops.css';
+@import './styles/responsive.css';
+@import './styles/gate.css';
+/* After gate.css, which holds the access gate's modal treatment. This partial
+   reuses that geometry for the panel that is actually drawn today, and sitting
+   after it means anything the two share settles here. */
+@import './styles/first-open.css';
+@import './styles/identity.css';
+@import './styles/live.css';
+@import './styles/animation.css';
+@import './styles/alerts.css';
+/* Keyframes only, and they have nothing to win or lose here: an `@keyframes`
+   block has no cascade position, and the rules that seat these animations live
+   with the surfaces that play them. astrolabe-tokens.css used to sit beside this
+   line and has moved up to the token layer; see the note there. */
+@import './styles/astrolabe-animation.css';
+/* After the token block, which these read, and after every page partial, because
+   they paint. The mark and the loaders are primitives rather than screens -- the
+   mark is in the header, the gate, the hero chip and every loading seat -- so
+   they win ties against the partials that merely place them. */
+@import './styles/astrolabe-mark.css';
+@import './styles/astrolabe-chrome.css';
+@import './styles/astrolabe-loaders.css';
+
+/*
+ * `dark:` applies only under a `.dark` ancestor, never from the OS setting.
+ *
+ * So every `dark:` utility in the build has been compiling against v4's default
+ * `prefers-color-scheme: dark` media query, in an application that hard-forces
+ * light mode. AppKit's own components carry a good number of them,
+ * `dark:bg-destructive/60`, `dark:bg-input/30`, `dark:text-muted-foreground`,
+ * and today they are harmless only because the rules below happen to outrank
+ * them. That is the same mechanism as the regression that made body text vanish
+ * on a machine set to Dark Mode: it needs only one future utility that wins on
+ * specificity. Binding the variant to a class the app never sets makes the whole
+ * category inert instead of merely outranked.
+ */
+@custom-variant dark (&:where(.dark, .dark *));

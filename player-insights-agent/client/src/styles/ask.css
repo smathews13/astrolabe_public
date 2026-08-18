@@ -1,0 +1,248 @@
+.conversation-main {
+  /* 56px above the hero's chip, which is the design's, and --conversation-inset
+     either side -- the same token the fixed composer insets itself off, so the
+     transcript and the box that writes into it cannot drift apart. It was the
+     clamp written out here in full, which is why they could. The 180px below is
+     the composer's own room: it is `position: fixed`, so nothing in the scroll
+     flow reserves space for it. */
+  padding: 56px var(--conversation-inset) 180px;
+  /*
+   * A stated reading measure, centred in the column, with the inset as its
+   * minimum gutter.
+   *
+   * The cap includes the padding so that --conversation-measure is the measure
+   * the TEXT gets rather than the box's outer width. Below the cap this is inert
+   * and the cell fills its grid track exactly as it did; above it the surplus
+   * becomes margin either side, which is the only page margin this layout has.
+   *
+   * That is what makes the wide end behave: the transcript was unbounded, so an
+   * answer card on a 2560px monitor ran to 1888px of 13px type while the hero
+   * above it and the composer below it both capped at 720px and looked like a
+   * different page. Both of those stay centred in the same column, so all three
+   * remain concentric.
+   */
+  max-width: calc(var(--conversation-measure) + var(--conversation-inset) * 2);
+  margin-inline: auto;
+  min-width: 0;
+  position: relative;
+  /* Was a translucent vertical gradient over a radial pool, both decorative and
+     both gone: DuBois pages are a solid surface and the transcript's cards do the
+     separating. */
+  background: var(--background);
+}
+/* Wide enough for the suggestion grid and the composer, both of which cap at 720px;
+   the headline and the support line cap themselves tighter than that, so the hero
+   narrows towards the middle rather than filling one width. */
+.ask-hero {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+/*
+ * The chip above the headline: the app saying who is about to answer.
+ *
+ * The empty state is the first screen a new user meets and it has no controls on it
+ * yet, so this carries the brand instead. The warm surface and a hairline, per the
+ * design -- it is a label rather than a control, and the black outline it used to
+ * wear made it read as something to press. It was an AppKit Badge, which could not
+ * hold the mark below without fighting the badge's own padding for it.
+ */
+/*
+ * The chip that introduces the agent, on Ice.
+ *
+ * §1: "agent-decision chips carry the small cut (22px chip, #F0F6FB fill)". Ice
+ * replaces the oat this wore, which is the app-wide swap rather than a decision
+ * about this chip; §2 has no oat in it.
+ */
+.ask-hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  margin-bottom: 20px;
+  border: 1px solid var(--ast-hairline);
+  border-radius: 999px;
+  background: var(--ast-ice);
+  color: var(--ast-text);
+  font-size: var(--ast-fs-12);
+  font-weight: 500;
+}
+/*
+ * The mark, which is the agent.
+ *
+ * It was the orange robot -- the same drawing the retired loading scene lit up --
+ * and before that a lucide sparkle in a filled orange square. §1 retires both:
+ * the thing that answers and the thing you opened are one thing and were only
+ * ever drawn as two. At 18px the mark is the small cut, without its graduation
+ * ring, which is the drawing that survives being small.
+ */
+.ask-hero-chip-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+/* 32px is the design's hero size, flat rather than fluid: the column it sits in is
+   already fluid between the two rails, and a headline that grew to 42px on a wide
+   screen was competing with the app's own name rather than with the question under
+   it. The tracking comes back two rungs with it -- -0.035em was tight enough at
+   42px to close the gaps between words. */
+.ask-hero h2 {
+  font-size: var(--text-hero);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  margin: 0 auto;
+  max-width: 640px;
+  color: var(--db-ink);
+  font-weight: 700;
+  text-wrap: pretty;
+}
+/* This rule carried two `color` declarations, so the token on the first was dead
+   and the hardcoded grey under it was what painted. One colour now, and it is the
+   app's secondary text token: 5.02:1 on white. */
+.ask-hero > p {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--db-slate);
+  max-width: 520px;
+  margin: 12px auto 0;
+}
+.prompt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 32px;
+  text-align: left;
+}
+.prompt-grid button {
+  min-height: 108px;
+  padding: 14px 16px;
+  /* A hairline and 8px, which is what every card in the app is now. It was a 1.5px
+     control border at 14px radius, a shape the design does not have anywhere: these
+     are cards that happen to be pressable, not buttons that happen to be large. */
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: border-color 0.15s ease;
+}
+/* Hovering a suggestion is the first action the app offers, so the card's border
+   goes to the action colour, which is what every outline control in the design does
+   under the pointer. The lift it used to do at the same time -- a one-pixel rise and
+   a larger drop shadow -- is gone with the rest of the elevation: nothing static in
+   this app floats above the page now, and the wash that replaced the lift went with
+   it: the border alone is the design's hover, and a fill under it made a card that
+   was merely pointed at look chosen. */
+.prompt-grid button:hover {
+  border-color: var(--db-blue-600);
+}
+/* The "Ask →" affordance, which is a link in everything but markup, so it is blue. */
+.prompt-grid button span {
+  display: block;
+  color: var(--primary);
+  font-size: 12px;
+  margin-top: 8px;
+  font-weight: 500;
+}
+/* The bubble and the avatar that signs it, kept on one line and pushed right.
+   The 22px that used to be the bubble's own bottom margin lives here now, so the
+   avatar cannot sit outside the gap it creates. */
+.user-message {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.user-bubble {
+  width: fit-content;
+  max-width: 80%;
+  padding: 10px 14px;
+  /* 8/8/2/8: the panel radius on three corners and a near-square notch on the one
+     that points at the avatar. It was 14/14/3/14, a fourth radius in a token block
+     that says in as many words that there is no third one, and the difference shows
+     -- a 14px bubble beside an 8px answer card reads as two different apps. */
+  border-radius: 8px 8px 2px 8px;
+  /* Stated rather than inherited from --primary, which it used to be back when
+     --primary was ink. The reader's own question is not an action, and a blue
+     speech bubble on the right of the transcript reads as a button. The darkest
+     neutral fill instead, which is what the design gives it: white on #11171C is
+     18.06:1. */
+  background: var(--db-ink-deep);
+  color: #ffffff;
+  /* The customer could select this text but saw no I-beam over it, so nothing
+     said it was selectable. */
+  cursor: text;
+}
+/* The user's counterpart to .agent-avatar. Round rather than the agent's
+   rounded square, and carrying initials rather than a glyph, so which of the two
+   wrote a message survives a greyscale screenshot and a colour-blind reader. */
+.user-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--db-chip);
+  border: 1px solid var(--db-line);
+  /* The chip's own text colour, not the app's secondary grey, which manages only
+     4.23:1 on this fill. #445461 on #E8ECF0 is 6.58:1. */
+  color: var(--db-grey-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  /* The whole identity is on `title`, as it is on the rail's owner circle. */
+  cursor: help;
+}
+/*
+ * Selection, per surface.
+ *
+ * There was no ::selection rule anywhere in this app or in AppKit's stylesheet,
+ * so both surfaces got the browser default: a pale wash that leaves the
+ * foreground colour alone. On the near-black bubble that is white text on pale
+ * blue, which is the report we had -- the selection works, copies and pastes,
+ * and cannot be seen.
+ *
+ * One global rule cannot serve both, because the two surfaces are inverses of
+ * each other. Each gets the inverse of its own background, which is the highest
+ * contrast available on it. Deliberately not the action colour, even though blue
+ * now owns "whatever is currently active or selected" everywhere else: a drag
+ * across three paragraphs is not an affordance, and a blue-on-blue answer card
+ * would be harder to read than the default it replaced.
+ *
+ * These two named the deprecated --pia-ink alias rather than --db-ink, because
+ * message-selection.test.ts pinned that name as its proof that each surface
+ * inverts the other. The two moved together: the test pins --db-ink now, which is
+ * the same ink it always resolved to and the name the rest of the app uses.
+ *
+ * Both the element and its descendants are named: ::selection matches the
+ * element whose text is selected, and a bubble holding a nested span would
+ * otherwise fall through to the default.
+ */
+.user-bubble::selection,
+.user-bubble ::selection {
+  background: var(--primary-foreground);
+  color: var(--db-ink);
+}
+.answer-card::selection,
+.answer-card ::selection,
+.plan-card::selection,
+.plan-card ::selection {
+  background: var(--db-ink);
+  color: #ffffff;
+}
+/* Prose in an answer is as selectable as a question is, and the I-beam is the
+   only thing that says so before the drag starts. Scoped to the text elements
+   rather than the card, so the buttons and links inside keep their pointer. */
+.answer-card p,
+.answer-prose li,
+.answer-heading,
+.answer-takeaway {
+  cursor: text;
+}

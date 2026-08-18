@@ -1,0 +1,544 @@
+/* ── The inline trace timeline ──────────────────────────────────────────────
+ *
+ * The Run Explorer tab used to hold a second timing view of its own, a
+ * waterfall, and its geometry is why it is gone rather than restyled: it floored
+ * a bar at 4% of the track so that a duration printed inside the bar would fit,
+ * and scaled the axis to the last stage's end rather than the run's measured
+ * envelope. The Gantt below is the one timing view now, on both surfaces, and
+ * the tab draws it with nothing above it.
+ *
+ * The kinds used to be separated by colour: a hue per kind on the chip's dot and
+ * on the bar, drawn from whatever the old palette had spare — amber for a model
+ * turn, ink for a plot, body grey for SQL. That worked when the app had three
+ * accents and none of them meant anything in here. It does not survive the
+ * revamp, for two reasons.
+ *
+ * The first is that amber now means evaluation and nothing else, so an amber bar
+ * for every LLM step is the largest amber mass on the answer card claiming to be
+ * a judgement about a step that was never judged. The second is that a hue per
+ * kind was never how a reader told them apart anyway: the chip has always carried
+ * the word. So the colour goes and the word stays, which is one axis rather than
+ * two and needs no legend.
+ *
+ * What is left is the design's neutral chip, the same one the live step list uses,
+ * and one colour for every step bar: the action colour, because the bar and the
+ * button that produced it are the same blue everywhere else in the app. Colour in
+ * this panel is now reserved for the two things it reports rather than the seven
+ * it categorises — red for a step that failed, and the hatch for one that did not
+ * finish cleanly.
+ */
+.trace-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.trace-panel-heading h4 {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin: 0;
+  color: var(--db-ink);
+}
+/* The neutral kind chip. One fill, one text colour, and the kind said in words:
+   #445461 on #E8ECF0 is 6.58:1, where the app's secondary grey manages only 4.23
+   on that fill and is why chip text has its own token. */
+.trace-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--db-chip);
+  color: var(--db-grey-blue);
+  white-space: nowrap;
+}
+/* The envelope is not a kind of step, it is the frame the steps sit in, so its chip
+   is the outline variant — the same distinction its bar makes below. The border
+   comes out of the padding so both chips are the same height in a row. */
+.trace-chip-run {
+  background: transparent;
+  border: 1px solid var(--db-line-strong);
+  padding: 0 6px;
+}
+/* The tiles head the step listing rather than sitting in a section of their own,
+   so this gap is the whole separation between the two. */
+.trace-rollup {
+  margin-bottom: 16px;
+}
+/* The roll-up, as tiles rather than rows. auto-fit means the strip is one line
+   of four on the answer card and reflows to two or one beside the rail, without
+   a breakpoint naming either width. */
+.trace-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.trace-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+/*
+ * The tile's value and the line of qualifiers under it.
+ *
+ * NEITHER SETS THE FACE. `.ast-num` on the element does, because §3's rule is
+ * about where a figure sits -- a stat value, a meta slot -- rather than about
+ * which rule happens to find it. What both of these carried instead was
+ * `font-variant-numeric: tabular-nums` with no mono family, and DM Sans declares
+ * no `tnum` feature: it switched nothing on, silently, so a column of tile values
+ * set in a face whose `1` is just over half the width of its `0` never lined up.
+ */
+.trace-kpi strong {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--db-ink);
+}
+.trace-kpi-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* Read as one line of qualifiers, so they need separating from each other
+   rather than spacing from the number above them. */
+.trace-kpi-meta > * + *::before {
+  content: '· ';
+  color: var(--db-line);
+}
+.trace-kpi-meta em {
+  font-style: normal;
+}
+.trace-kpi-meta em.trace-failed {
+  color: var(--db-red-600);
+}
+/* Right-aligned, because these columns are read down rather than across. The face
+   is `.ast-num` on the cells, not here: this selector also carries the column's
+   heading, which is a word and not a figure. */
+.trace-num {
+  text-align: right;
+}
+/* The honesty notes. They were 10.5px, which is smaller than anything else the app
+   asks anyone to read and is how a sentence comes to look like boilerplate to be
+   skipped. They are the part of this panel the customer cares most about, so they
+   take the app's caption size like every other caption. */
+.trace-note {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin: 10px 0 0;
+}
+.trace-note code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--db-code-bg);
+  border-radius: var(--radius-sm);
+  padding: 0 3px;
+}
+
+/* ── The Gantt ─────────────────────────────────────────────────────────────
+ *
+ * A table, because every row is a labelled record with a duration and the bar
+ * is one of its columns. That keeps it selectable, readable by a screen reader,
+ * and free of any charting dependency. The deploy budget is unchanged by this
+ * whole panel.
+ */
+.trace-gantt-scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+}
+.trace-gantt table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+/*
+ * The header row: 700 in the secondary tone, and in sentence case.
+ *
+ * It used to be a 9.5px uppercase eyebrow, which is the app's treatment for the
+ * label above a block rather than for the head of a dense table. The eyebrow
+ * tracking is also what forced "step" to wrap to two lines in the narrowest
+ * column, which is the whole reason that column is headed "#" now.
+ */
+.trace-gantt thead th {
+  text-align: left;
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+  font-weight: 700;
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--db-line);
+  vertical-align: bottom;
+}
+.trace-gantt .trace-step {
+  width: 32px;
+  text-align: left;
+  padding-right: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+/*
+ * The event label competes with the axis for width, and it should win.
+ *
+ * At a 900px viewport the panel is 567px, and with the axis holding a 200px
+ * minimum the label was left about 160px and wrapped "Read a table's columns"
+ * onto three lines. A name that takes three lines makes the row it labels hard
+ * to scan, whereas a slightly shorter bar track costs nothing. The geometry is
+ * fractional, so it stays exact at any width.
+ */
+.trace-gantt .trace-event {
+  min-width: 168px;
+  max-width: 240px;
+}
+/*
+ * The duration needs a floor as well as a width.
+ *
+ * `width` on a table cell is only a hint, so once the event and axis columns
+ * had minimums the browser took the space out of this one instead and rendered
+ * "763ms" as five stacked characters. It is the column the whole panel is
+ * about; it does not wrap.
+ */
+.trace-gantt .trace-duration {
+  width: 74px;
+  min-width: 66px;
+  padding-left: 10px;
+  white-space: nowrap;
+}
+/* The column the whole panel is about, so it is mono and tabular: read down, the
+   digits line up and a run of durations can be compared without reading them. */
+.trace-gantt tbody .trace-duration {
+  font-family: var(--font-mono);
+  color: var(--db-ink);
+}
+/* The axis sits in the header cell above the track column, so its ticks and the
+   bars below share one coordinate space by construction rather than by two
+   matching magic numbers. */
+.trace-axis-head {
+  width: 45%;
+  min-width: 150px;
+}
+/* The column still needs a name. The ticks alone left this header empty, which is
+   a table column a screen reader announces by position and nothing else. */
+.trace-axis-label {
+  display: block;
+  margin-bottom: 3px;
+}
+/* The tick labels are units, not headings: "+4.80s" must not become "+4.80S". */
+.trace-axis {
+  display: block;
+  position: relative;
+  height: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.trace-axis b {
+  position: absolute;
+  top: 0;
+  font-weight: 500;
+  font-size: 9px;
+  color: var(--muted-foreground);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+/* First and last ticks pull inside the track rather than overhanging it. */
+.trace-axis b:first-child {
+  transform: none;
+}
+.trace-axis b:last-child {
+  transform: translateX(-100%);
+}
+.trace-gantt tbody td {
+  padding: 7px 8px 7px 0;
+  border-bottom: 1px solid var(--db-line);
+  vertical-align: middle;
+}
+.trace-gantt-row {
+  cursor: pointer;
+}
+.trace-gantt-row:hover td {
+  background: var(--db-row-hover);
+}
+/*
+ * The open row is a selected row, so it takes the app's selection treatment rather
+ * than the neutral wash it used to: the blue tint, and the 3px inset edge on the
+ * first cell. Inset rather than a border, so opening a row cannot shift the column
+ * widths of the rows above and below it.
+ */
+.trace-gantt-row.expanded td,
+.trace-detail td {
+  background: var(--db-selected-tint);
+}
+.trace-gantt-row.expanded td:first-child,
+.trace-detail td:first-child {
+  box-shadow: inset 3px 0 0 var(--db-blue-600);
+}
+/* The envelope row reads as the frame the others sit in, not as another step. */
+.trace-gantt-row.container td {
+  background: var(--muted);
+  font-weight: 500;
+}
+.trace-gantt-row.container:hover td {
+  background: var(--secondary);
+}
+.trace-event button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+/* The chevron belongs to the row it opens, so it is inside the cell that names it
+   rather than in a column of its own. Blue, because it is the one thing in the row
+   you press. */
+.trace-event button > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: var(--db-blue-600);
+  transition: transform 150ms ease-out;
+}
+.trace-gantt-row.expanded .trace-event button > svg {
+  transform: rotate(180deg);
+}
+/* Underlined rather than recoloured. The label is already ink, so the only colour
+   move left is a lighter one, and text that fades under the pointer reads as
+   disabling itself. */
+.trace-event button:hover {
+  text-decoration: underline;
+}
+/*
+ * A step that did not end cleanly, named.
+ *
+ * Partial used to be amber here and failed red, which put the two states in two
+ * families and made amber mean "not quite" in one panel and "evaluation" in every
+ * other. They share the red family now, which is the handoff's rule, and the
+ * distinction is carried where it always actually was: by this label, which says
+ * which of them it is, and by the hatch on the bar.
+ *
+ * On the wash rather than on the red line colour, which is 3.84:1 and fails at this
+ * size; red on its own wash is 4.99:1, with the line demoted to the border.
+ */
+.trace-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--db-red-wash);
+  color: var(--db-red-600);
+  border: 1px solid var(--db-red-line);
+}
+.trace-track {
+  position: relative;
+  height: 14px;
+}
+/*
+ * The bar. `left` and `width` are the measured position and are written inline
+ * from the recorded numbers; nothing here adjusts them.
+ *
+ * One colour for every kind, and it is the action colour: the primary series, the
+ * same blue as the button that produced the run. Which kind a bar is is said by the
+ * chip two columns to the left, in a word, which is how a reader was telling them
+ * apart even while there were seven hues to do it with.
+ */
+.trace-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--chart-1);
+  display: block;
+}
+/*
+ * The envelope is a frame, not a mass: an outline, so it cannot be mistaken for
+ * another measured step lying under the others. 1.5px, which is the design's
+ * weight, and heavy enough to read as a frame rather than as a faint bar.
+ *
+ * The design draws it in #92A4B3 and this does not, and the reason has been
+ * restated because the old one has expired. It used to say the palette carried no
+ * token for the design's light grey-blue and that tokens.css was not that pass's
+ * to extend. Both halves are now false: --db-grey-blue-400 is #8396A5 and it is
+ * right there. What has not changed is the arithmetic, which is the real reason.
+ *
+ * The envelope is a graphical object a reader has to perceive in order to read
+ * the chart, so WCAG 1.4.11 asks 3:1 of it against whatever is behind it.
+ * Measured: the design's #92A4B3 is 2.566:1 on white and fails outright. The pale
+ * token is 3.056:1 on white and 2.853:1 on the #F7F7F7 wash, so it passes on one
+ * of the surfaces this panel can sit on and fails on the other, at a margin of
+ * five hundredths. --db-slate is 5.025:1 and 4.690:1, and clears both with room.
+ *
+ * So the frame is a shade darker than drawn, in the same role. Do not "fix" it
+ * back to the handoff's colour, and do not repoint it at --db-grey-blue-400 on
+ * the grounds that the token now exists: that token exists for a FILL, which is
+ * what the working animation's data store uses it as, and a fill is not carrying
+ * a measurement the way this outline is.
+ */
+.trace-bar-run {
+  background: transparent;
+  border: 1.5px solid var(--db-slate);
+  height: 10px;
+  border-radius: 2px;
+}
+/*
+ * A step that did not finish cleanly must not read as one that did. Hatched
+ * rather than merely recoloured, so it is distinguishable without relying on
+ * colour, and the hatch runs the full measured width. The time is real even
+ * though the outcome was not.
+ *
+ * This is the one gradient in the app that survives the revamp's removal of them,
+ * and the one place translucent white is still doing work. It is not a surface
+ * treatment: it is the pattern itself, carrying a meaning that colour alone would
+ * have to carry twice over. It stays translucent because the bar underneath it is
+ * still two colours — the action blue for a step that ran, red for one that failed
+ * — and a hatch drawn in either of them would disappear on the other.
+ */
+.trace-bar.partial,
+.trace-bar.running,
+.trace-bar.failed {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(255, 255, 255, 0.85) 0,
+    rgba(255, 255, 255, 0.85) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
+.trace-bar.failed {
+  background-color: var(--db-red-600);
+}
+/* Said in words, and in the same size as the durations it stands in for, so it does
+   not read as a footnote about the row it replaces the measurement of. */
+.trace-unmeasured {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* The expanded row. Arguments and results are whole now that the contract no
+   longer truncates them, so this scrolls rather than stretching the page. */
+.trace-detail td {
+  padding: 4px 10px 12px !important;
+}
+.trace-detail dl {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.trace-detail dt {
+  color: var(--muted-foreground);
+}
+.trace-detail dd {
+  margin: 0;
+  min-width: 0;
+}
+/* Started and Took are measurements, so they read as measurements. The two below
+   them are recorded text and have their own treatment. */
+.trace-detail dd.trace-measured {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * The recorded value, in the app's code panel: the shared code fill rather than a
+ * bordered white box, which is what the design gives a recorded SQL statement
+ * everywhere else it appears.
+ */
+.trace-detail pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  background: var(--db-code-bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.trace-empty {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.trace-payload {
+  min-width: 0;
+}
+.trace-payload-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* The agent's own ceiling, surfaced. A cap the reader does not notice is worse
+   than no cap, because they would take the box for the whole value. */
+.trace-payload-clipped {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--db-amber-wash);
+  color: var(--db-amber-deep);
+  border: 1px solid var(--db-amber-line);
+}
+/* A JSON payload unwrapped into its keys, so a query reads as a query. */
+.trace-payload-fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trace-payload-fields li {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+.trace-payload-fields li.block {
+  display: block;
+}
+.trace-payload-key {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--db-body);
+}
+.trace-payload-fields li.block .trace-payload-key {
+  display: block;
+  margin-bottom: 2px;
+}
+.trace-payload-value {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+

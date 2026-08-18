@@ -1,0 +1,464 @@
+/*
+ * AppKit ships `@media (prefers-color-scheme: dark) { :root:not(.light) { … } }`. That
+ * selector scores (0,2,0), so it outranks a plain `:root` no matter what order the rules
+ * land in. On a machine set to Dark Mode it repainted every foreground token near-white
+ * while the surfaces below stayed hardcoded white, which is what made body text vanish.
+ *
+ * `.light` on <html> (set in App.tsx) switches that block off wholesale, including the
+ * chart and sidebar tokens this file never redeclares. Matching `:root:not(.light)` here
+ * as well keeps the core palette correct on the first paint, before that class is applied.
+ */
+:root,
+:root:not(.light),
+.dark {
+  color-scheme: light;
+  /*
+   * The palette, as Databricks DuBois.
+   *
+   * The app used to be black on white with three rationed accents. The rationing
+   * is the part worth keeping and it is kept exactly; the hues are the part that
+   * changed. One of the five rules below still has to justify any colour on
+   * screen, and each colour still means one thing and only that thing:
+   *
+   *   BLUE   = action and identity. Anything you press to make the agent work,
+   *            whatever is currently active or selected, links, focus, the
+   *            primary data series, and the marks that say this app is PIA. If
+   *            it is not one of those, it stays neutral. This is the job ink
+   *            used to do, and the swap is the whole revamp in one line.
+   *   ORANGE = the agent is working, and the agent's own identity. The step in
+   *            flight, the live pill, the indeterminate sweep, the agent avatar.
+   *            FILLED MASSES ONLY -- never text, never a hairline. Never an
+   *            action, because blue owns those, and never a judgement about an
+   *            answer, because amber owns those.
+   *   AMBER  = evaluation. Score, rating, benchmark quality, and the
+   *            qualifications that hang off them. Nowhere else: not on an
+   *            action, not on a status, not on a chart series.
+   *   RED    = something failed, or is one click from destroying something.
+   *            Partial shares this family with failed; the hatch and the label
+   *            carry the difference. Never decoration, never identity.
+   *   GREEN  = reachable, or saved. A dependency answered, a write landed.
+   *
+   * And one rule that is about weight rather than hue, unchanged by the revamp:
+   * a SLOW or outlier bar separates by going to full-strength blue and getting
+   * heavier, never by going amber. Amber next to the score card would read as a
+   * judgement about the run rather than a measurement of it.
+   *
+   * WHAT IS AND IS NOT SAFE AS TEXT. The old note here said neither accent could
+   * ever be type, measured at 1.88:1 and 1.90:1 on white. That was true of the
+   * old hues and only one of the two new ones inherits it, so the numbers are
+   * restated rather than carried over. Measured on white:
+   *
+   *   blue        #2272B4   5.08:1   text, hairlines, icons -- all of it, AA
+   *   blue hover  #0E538B   7.99:1
+   *   red         #C82D4C   5.33:1   text and edges, AA (4.99:1 on its own wash)
+   *   green       #277C43   5.19:1   text and edges, AA (4.96:1 on its own wash)
+   *   amber-deep  #93320B   7.77:1   what evaluation uses when it has to be type
+   *   orange      #FF3621   3.62:1   FAILS AA for text; clears the 3:1 an icon,
+   *                                  a bar or a 2px rule needs to be a shape
+   *   amber       #FFAB00   1.90:1   fails both, exactly as it always did
+   *
+   * So the reason orange is filled-mass-only is no longer "you could not see
+   * it": at 3.62:1 you can. It is that 3.62 is under the 4.5 a 13px label needs,
+   * and that spending it on an edge somewhere would stop the live states being
+   * the only orange on the screen. Amber's exclusion is still the plain
+   * arithmetic it always was. Both carry an ink glyph legibly when they are a
+   * fill -- ink measures 5.00:1 on orange and 9.55:1 on amber.
+   *
+   * The one place the handoff and the arithmetic disagree: it asks for white
+   * text on the solid-orange live pill, which is that same 3.62:1 and under AA
+   * at pill sizes. That is the handoff's call and it is recorded here rather
+   * than quietly fixed, because the pill is a per-screen decision and this file
+   * is not where it gets made. Ink on orange clears AA if it is ever revisited.
+   *
+   * The surfaces are literals because they were measured as literals, and the
+   * bar they were measured against is the same one the old palette used: that
+   * --muted-foreground clears AA on every one of them, so a foreground already
+   * checked against one wash holds on all of them. Measured for #6F6F6F:
+   * neutral #F7F7F7 4.69:1, amber #FFF9EB 4.79:1, red #FFF5F7 4.70:1, green
+   * #F3FCF6 4.80:1. The one surface it does NOT clear is the neutral chip fill
+   * #E8ECF0, at 4.23:1 -- chip text is --db-grey-blue instead, at 6.58:1.
+   */
+
+  /* ---- DuBois primitives (source: @databricks/design-system dubois-colors.less) ---- */
+  --db-blue-500: #4299e0;
+  --db-blue-600: #2272b4; /* action & identity */
+  --db-blue-700: #0e538b; /* hover */
+  --db-blue-800: #04355d; /* press */
+  --db-orange: #ff3621; /* the agent working / AI identity (Databricks brand orange) */
+  --db-amber: #ffab00; /* evaluation — FILLED MASS OR THICK RULE ONLY (1.90:1 on white) */
+  --db-amber-deep: #93320b; /* evaluation as text or a 1px edge */
+  --db-amber-wash: #fff9eb;
+  --db-amber-line: #f8d4a5;
+  --db-red-600: #c82d4c; /* failure / destruction */
+  --db-red-700: #9e102c; /* hover rung */
+  --db-red-wash: #fff5f7;
+  --db-red-line: #fbd0d8;
+  --db-teal-600: #04867d; /* the second chart series, and nothing else */
+  --db-green-600: #277c43; /* reachable / saved */
+  --db-green-500: #3ba65e;
+  --db-green-wash: #f3fcf6;
+  --db-green-line: #b1ecc5;
+  --db-warn-600: #be501e; /* drift / degraded, as text (4.82:1 on white) */
+  --db-ink: #161616; /* textPrimary, 18.10:1 on white */
+  --db-ink-deep: #11171c; /* darkest fill: the user's own bubble, dark chips */
+  --db-body: #3a3838; /* long-form body copy, 11.65:1 on white */
+  --db-slate: #6f6f6f; /* textSecondary / placeholder / eyebrows, 5.02:1 */
+  --db-slate-icon: #525252; /* default icon stroke */
+  --db-grey-blue: #445461; /* chip text, because --db-slate is only 4.23:1 there */
+  /* The pale rung of the same family, for a neutral FILL: the governed-data
+     figure in the working animation. 3.06:1 on white and 2.85:1 on --db-wash,
+     measured rather than estimated — an earlier version of this line claimed 2.4:1,
+     which is the sort of number that gets quoted onward once it is written down.
+     Both readings clear the 3:1 a non-text mark needs on white and neither clears
+     the 4.5:1 body copy needs, so it stays a fill and never becomes type. On the
+     wash it is under 3:1, which is why nothing structural is drawn in it there. */
+  --db-grey-blue-400: #8396a5;
+  --db-chip: #e8ecf0; /* neutral chip / segmented-active fill */
+  /* The agent map's connector glyphs, from agent-map.md. Lighter than
+     --db-slate-icon because an arrow between two cards is punctuation rather than
+     an icon: at the icon rung a row of them read as a row of marks competing with
+     the cards. It is never type and never an edge — 2.5:1 on white clears
+     nothing, which is exactly why it is only allowed to be a glyph a reader is
+     not asked to read. */
+  --db-connector: #a6a6a6;
+  /* The blue at its faintest: the fill of the agent map's selected card, whose
+     2px blue edge is what actually marks it. Distinct from --db-selected-tint,
+     which is the same blue at 6% and is what a selected ROW takes -- the run
+     list, the Gantt's expanded row, the conversation rail. A card carrying a 2px
+     edge does not need the row's weight of fill behind it, and at the row's
+     weight the open card read as a second, heavier selection than the row that
+     had selected the run. */
+  --db-blue-faint: #fbfdfe;
+  /* The blue counterpart of --db-chip: a SOLID pale tint for a small filled mass
+     that has to hold coloured text on it. Not --db-selected-tint, which is the
+     same blue at 6% and is a wash laid over whatever is behind it -- fine for a
+     selected row on white, useless for a pill that has to guarantee a ratio,
+     because its effective colour changes with its background. #0E538B measures
+     6.52:1 on this and clears AA; the admin role badge is the one thing that
+     uses it. */
+  --db-blue-tint: #ddeaf4;
+  --db-wash: #f7f7f7; /* backgroundSecondary: hover, selected, panel heads */
+  --db-warm: #f9f7f4; /* warm hero / AI-context surface (use sparingly) */
+  --db-line: #ebebeb; /* hairline — the ONLY thin border */
+  --db-line-strong: #cbcbcb; /* control borders (inputs, outline buttons) */
+  --db-code-bg: rgba(82, 82, 82, 0.08);
+  --db-skeleton: rgba(162, 162, 162, 0.16);
+  --db-row-hover: rgba(82, 82, 82, 0.04);
+  --db-selected-tint: rgba(34, 114, 180, 0.06);
+  /* The same blue at the weight an outline or ghost control takes under the
+     pointer. It was written out as `rgba(34, 114, 180, 0.08)` at four call sites
+     -- the gate's three doors, the rail's filter chips, the rail's delete
+     confirmation and the header's nav tabs -- so the hover state was the one
+     thing on screen that would not have followed --db-blue-600 if the blue ever
+     moved. 34, 114, 180 is #2272B4 is --db-blue-600, and the arithmetic is
+     recorded here rather than in four places that cannot see each other. */
+  --db-hover-tint: rgba(34, 114, 180, 0.08);
+  /* The third weight of the same blue, for the moment a control is held down.
+     The app had hover and selected and no press, so a ghost control could only
+     ever report being pointed at -- press and release both painted the hover
+     wash and a click was indistinguishable from a hesitation over the label.
+     Heavier than hover for the same reason hover is heavier than selected: being
+     pressed is more present than being pointed at. Same three channels, so all
+     three weights follow --db-blue-600 if the blue ever moves. */
+  --db-press-tint: rgba(34, 114, 180, 0.16);
+  /* The evaluation family's own tint, for a mono tag inside the amber wash: the
+     table and column names an answer's caveats name, and the leading scope tag
+     on a caveat about one table. 147, 50, 11 is #93320B is --db-amber-deep, so
+     the tag follows the deep rung if it ever moves, exactly as the three blue
+     tints follow --db-blue-600.
+
+     8% and no more. This is a fill BEHIND type that has to stay readable on the
+     amber wash it sits on: at this weight the effective background is close
+     enough to #FFF9EB that the body ink and the deep rung both keep the ratios
+     they were measured at, and the tag reads as a marked word rather than as a
+     second panel. It is never an edge and never type. */
+  --db-amber-tint: rgba(147, 50, 11, 0.08);
+
+  /*
+   * ---- The --pia-* names, deprecated, and now unused ----
+   *
+   * Every one of these is an alias for the DuBois token above it. They were kept
+   * so that a call site this revamp did not reach would paint something merely
+   * un-modernised rather than something broken -- an unreached site inherits the
+   * new hue through the old name.
+   *
+   * NO RULE IN THE STYLESHEET NAMES ONE ANY MORE. The last 21 were repointed at
+   * the --db-* names they resolve to, because two vocabularies for one palette had
+   * stopped being a safety net and started being a puzzle: timeline.css had a rule
+   * setting `background: var(--pia-gold-wash)` on the line above
+   * `border: 1px solid var(--db-amber-line)`, which is one colour family written
+   * two ways in adjacent lines. Each substitution was checked against the alias it
+   * names here, so nothing on screen changed colour.
+   *
+   * What is left is a compatibility layer with nothing to be compatible with, and
+   * the reason it is still here rather than deleted is worth stating so the next
+   * reader does not have to work it out. palette.test.ts reads these names in
+   * three places: it asserts that every alias in this block is an alias rather
+   * than a literal (a guard that has nothing to guard if the block goes), and its
+   * ORANGE and AMBER patterns list --pia-turquoise and --pia-gold as alternates so
+   * that a rule written with an old name is still caught by the rules about what
+   * an accent may not be. Deleting the block means deleting a check, which is a
+   * worse trade than carrying fifteen unused declarations. Nothing else reads
+   * them: not the .tsx files, not the server, and not tests/smoke.spec.ts, which
+   * reads --db-* off the computed style.
+   *
+   * New rules name the --db-* token. There is no case left for naming one of these.
+   *
+   * Two of them are the interesting ones, because the old token was doing two
+   * jobs and the split is not mechanical.
+   *
+   * --pia-ink was the text colour AND the action colour, which was invisible
+   * while both were the same black. Aliasing it to blue would have turned every
+   * paragraph in the app blue; aliasing it to ink would have left every button
+   * black. So it stays ink here, and the ~47 call sites were classified one at a
+   * time: text, structural border and dark neutral fill kept ink, while buttons,
+   * links, active pills, selected-row edges, focus rings, plan numerals and the
+   * primary series were repointed at --primary. This alias is therefore only
+   * correct for the half that stayed.
+   *
+   * --pia-turquoise was doing the same thing across two rungs: the mark's own
+   * turquoise meant "running right now", and the deep rung meant "reachable, or
+   * saved". Those are two different meanings in the new palette, so the alias
+   * splits: the loud rung becomes orange (the working colour) and the deep rung
+   * becomes green (the reachable one). The wash follows the deep rung, because
+   * every wash that used it was behind a saved or reachable state.
+   */
+  --pia-ink: var(--db-ink);
+  --pia-graphite: var(--db-body);
+  --pia-wash: var(--db-wash);
+  --pia-tint: var(--db-chip);
+  --pia-danger: var(--db-red-600);
+  --pia-danger-deep: var(--db-red-700);
+  --pia-danger-wash: var(--db-red-wash);
+  --pia-danger-tint: var(--db-red-line);
+  --pia-turquoise: var(--db-orange);
+  --pia-turquoise-deep: var(--db-green-600);
+  --pia-turquoise-wash: var(--db-green-wash);
+  --pia-gold: var(--db-amber);
+  --pia-gold-deep: var(--db-amber-deep);
+  --pia-gold-wash: var(--db-amber-wash);
+  --pia-slate: var(--db-slate);
+  --pia-line: var(--db-line);
+
+  /*
+   * The header's height, which the sticky rail and the trace inspector subtract.
+   *
+   * STATED, NOT DERIVED, AND THAT IS A CORRECTION. It used to be
+   * `--logo-mark-size + 22px`, describing a stack of a 3px brand rule, 9px of
+   * padding twice, a 30px mark and the bottom hairline -- so the token was a
+   * claim about the header's contents that somebody had to keep true by hand.
+   * The claim has been wrong once already, reading 52px while the header stood
+   * at 58, with six pixels of the transcript underneath it.
+   *
+   * `astrolabe-rebuild-spec.md` §1 gives the bar as 52px. shell.css sets that
+   * height on the element, so the two agree by being one fact rather than by
+   * arithmetic that has to be maintained, and the 22px lockup inside it can be
+   * resized without moving a single sticky offset.
+   *
+   * --logo-mark-size went with the derivation. Its only other reader was the
+   * partner plate the lockup replaced, and the lockup's two sizes are the
+   * component's (see LOCKUP_SIZES in AstrolabeMark.tsx) because a 22px mark
+   * beside a 17px wordmark is neither of the two lockups the design has.
+   */
+  --app-header-h: 52px;
+
+  /* The header's horizontal inset, as a token because the nav's alignment with
+     the rail is arithmetic on it: the rail is measured from the window's edge and
+     the header's contents from inside this padding, so .brand-lockup's column is
+     the rail's width less this. Typed as a bare 20px in both rules it would be
+     one number in two places, and the tabs would come unstuck from the rail the
+     first time the header alone was adjusted. */
+  --app-header-pad-x: 20px;
+
+  /*
+   * How far the first nav tab clears the conversation rail's hairline.
+   *
+   * It used to be zero, and zero was a deliberate choice that turned out to be
+   * the wrong one. The brand column was sized so the first tab's LABEL landed
+   * exactly on the rail's edge, on the reasoning that a label sitting on the
+   * line below it is what a reader checks. What that actually produced is a tab
+   * whose left edge touches the divider: "Ask PIA" reads as though it is leaning
+   * on the rail, and the active tab's 2px underline starts in the same pixel
+   * column as the rail's own vertical hairline, so the two lines meet in a
+   * corner nobody drew.
+   *
+   * 16px, which is the rail's own padding, so the gap to the right of the
+   * hairline matches the gap to its left and the whole tab row is offset by a
+   * number somebody chose. It is added to `.brand-lockup`'s column rather than
+   * to the tab, because the tab is one item and this has to move the ROW: a
+   * padding-left on the first tab alone would push its label right and leave its
+   * box, and therefore the underline, where it was.
+   */
+  --app-nav-inset: 16px;
+
+  /* The three columns of the ask surface. The composer is `position: fixed` and
+     insets itself off these two, so they are declared here rather than on
+     .ask-layout and both readings stay in step.
+     THE CONVERSATION COLUMN IS FLAT AND IT IS DECLARED HERE, which is a reversal
+     worth recording. It was `clamp(220px, 15vw, 264px)` here and restated as a
+     flat 264px on .ask-layout, on the argument that this file is shared and the
+     page should say what it uses. That held while the rail was the only thing
+     that cared. It is not: the header's brand column is now sized so the first
+     nav tab begins on the rail's edge, and the header is not inside .ask-layout,
+     so reading the token got it the clamp -- 220px at most ordinary window
+     widths -- while the rail was 264. Two surfaces reading one name and getting
+     two answers is worse than a token in a shared file, so the number lives here
+     once and the rail, the fixed composer and the header all read it. The 1180px
+     band in responsive.css still narrows it to 220px for the rail alone. */
+  --conversation-width: 264px;
+  --trace-width: clamp(280px, 21vw, 300px);
+
+  /*
+   * How far the ask surface's middle column holds its contents off the two rails
+   * beside it.
+   *
+   * A TOKEN BECAUSE IT WAS FIVE COPIES OF ONE LITERAL. `clamp(28px, 3.5vw, 64px)`
+   * was typed out in ask.css once, in composer.css twice and in responsive.css
+   * twice, and the composer is `position: fixed` and insets itself off the same
+   * figure the transcript is padded by -- so the two only line up for as long as
+   * nobody adjusts one of them. That is the same failure `--app-header-pad-x`
+   * above exists to prevent, and it is why "give Ask PIA more padding" was not a
+   * one-number change until now. It is one now.
+   *
+   * The figures are raised from that clamp, which is the reported defect: the
+   * transcript's cards sat close enough to the rail's hairline to read as
+   * touching it. The floor moves 28 -> 40 so the narrow end is no longer the
+   * tight one, and the growth rate matches `.page-shell`'s 4vw so this page
+   * insets its contents the way the other four do rather than on a rate of its
+   * own. The ceiling clears 64 so a wide window gains from it too.
+   *
+   * NOT A SOURCE OF COLUMN WIDTH. Raising this narrows the transcript, because
+   * the middle column is whatever the two 264px rails leave. Making the column
+   * itself wider means taking width from one of them, which is a design decision
+   * with a test on it -- see `--trace-width` on `.ask-layout` in rail.css, and
+   * `.brand-lockup` in shell.css for why the rail's own width cannot move
+   * without moving the first nav tab with it.
+   *
+   * The floor moves 40 -> 48 because 40 is the figure a narrow window actually
+   * gets and it is the one that was reported as cramped. The rate and the ceiling
+   * are untouched: past about 1200px the clamp is already giving more than this.
+   */
+  --conversation-inset: clamp(48px, 4vw, 72px);
+
+  /*
+   * The widest the transcript itself is allowed to be, as opposed to the column
+   * it sits in.
+   *
+   * WITHOUT THIS THERE IS NO SUCH THING AS A PAGE MARGIN ON ASK PIA, which is
+   * the whole reason it exists. The middle column is exactly
+   * `100vw - rail - inspector`, and the transcript filled every pixel of it less
+   * the inset above. On a 1512px laptop that is an answer card 864px wide, which
+   * is fine; on a 2560px monitor it is 1888px, set in 13px type, while the hero
+   * and the composer directly above and below it cap themselves at 720px. So the
+   * complaint that the text "needs more padding and more width" was two
+   * different faults wearing one sentence: the reading measure was unbounded at
+   * the wide end and the gutter was thin at the narrow end.
+   *
+   * 880px is wider than the 720px the hero and composer cap at -- an answer
+   * carries tables, charts and a source list, and is entitled to more measure
+   * than a prompt box -- and short enough that a line of body copy stays
+   * readable. Everything past it becomes margin, which is where the width for
+   * a wider rail comes from: NOT from the answer column, which keeps every pixel
+   * it has at every width a laptop is likely to be.
+   */
+  --conversation-measure: 880px;
+
+  /* ---- appkit-ui / shadcn semantic mapping ---- */
+  --background: #ffffff;
+  --foreground: var(--db-ink);
+  /* Solid. This was rgba(255, 255, 255, 0.9) over a gradient page, which is the
+     frosted-chrome treatment DuBois does not have. Cards are white on white and
+     separate by their hairline. */
+  --card: #ffffff;
+  --card-foreground: var(--db-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--db-ink);
+  /*
+   * --primary is the app's action colour and it is now blue rather than the same
+   * black as the type. One line here repaints every affordance that already
+   * routed through the token -- the Ask PIA and New conversation buttons, the
+   * active nav pill, plan step numerals, the agent glyphs in the trace panel --
+   * which is why comparatively few call sites below name a colour themselves.
+   *
+   * The user's own bubble deliberately no longer routes through it. It used to,
+   * back when --primary was ink, and a blue speech bubble would have made the
+   * reader's own question look like a button. It takes --db-ink-deep now.
+   */
+  --primary: var(--db-blue-600);
+  --primary-foreground: #ffffff;
+  --secondary: var(--db-chip);
+  --secondary-foreground: var(--db-ink-deep);
+  --muted: var(--db-wash);
+  --muted-foreground: var(--db-slate);
+  --accent: var(--db-wash);
+  --accent-foreground: var(--db-ink);
+  --border: var(--db-line);
+  --input: var(--db-line-strong);
+  --ring: var(--db-blue-600);
+  /*
+   * Four series and an emphasis, rather than the two weights of black this used
+   * to be. --chart-1 is the primary series and is the same blue as every other
+   * action, which is the point: the bar and the button that produced it are the
+   * same colour. --chart-emphasis is orange and marks exactly one bar, the
+   * leader, because it is the AI-identity colour and a chart full of it would
+   * mean nothing.
+   *
+   * These also fix a live defect. Before the revamp --chart-1 and --chart-2
+   * still resolved through a brand red that had been retired from the rest of
+   * the app, so the charts were the last thing on screen painted in it.
+   *
+   * No text is printed on top of any of these. One bar used to carry its own
+   * duration, on the Run Explorer's waterfall, and took --chart-4 for the
+   * contrast: white measures 7.82:1 on #445461 against 4.46:1 on the teal. That
+   * view is gone and the figure has a column of its own, so the rule holds
+   * everywhere without an exception to keep.
+   */
+  --chart-1: var(--db-blue-600);
+  --chart-2: var(--db-teal-600);
+  --chart-3: var(--db-blue-500);
+  --chart-4: var(--db-grey-blue);
+  --chart-emphasis: var(--db-orange);
+  /*
+   * Status colours are pinned because AppKit's dark variants are lighter and
+   * wash out on white. --warning is the drift-and-degraded rung, 4.82:1 against
+   * white, and the app still does not paint slow or partial states with it: that
+   * would blur the line between amber-the-evaluation and amber-the-warning,
+   * which is the confusion the old palette was rebuilt to remove.
+   */
+  --warning: var(--db-warn-600);
+  --warning-foreground: #ffffff;
+  --success: var(--db-green-600);
+  --success-foreground: #ffffff;
+  /* The app's one red. Nothing else routes through this family. */
+  --destructive: var(--db-red-600);
+  --destructive-foreground: #ffffff;
+
+  /*
+   * ---- Type and shape ----
+   *
+   * --font-mono has been referenced at six call sites since the trace panel
+   * landed and was never declared anywhere, so every identifier, correlation id
+   * and SQL fragment in the app has been rendering in each site's own fallback
+   * list. Both faces are declared here now, and both are the self-hosted files
+   * in styles/fonts.css rather than anything fetched at runtime.
+   *
+   * The radii and the type scale are vocabulary for the screens rather than
+   * anything applied here. The stylesheet still carries 44 border-radius
+   * declarations across five competing systems and 19 font sizes; collapsing
+   * those onto these tokens is per-screen work and is deliberately not done in
+   * this pass.
+   */
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-sm: 4px; /* buttons, inputs, badges, alerts, code panels */
+  --radius-md: 8px; /* cards, rows, panels — there is no third radius */
+  --text-base: 13px; /* app body */
+  --text-sm: 12px; /* dense body, captions */
+  --text-xs: 11px; /* eyebrows (700, +0.06em, uppercase), pill labels */
+  --text-h-page: 22px; /* page h2, 700, -0.01em */
+  --text-h-card: 18px; /* takeaway titles, 700, -0.01em, lh 1.35 */
+  --text-h-section: 16px; /* card/section titles, 700 */
+  --text-h-sub: 14px; /* sub-block titles, 700 */
+  --text-kpi: 22px; /* metric tile values, 700, tabular-nums */
+  --text-hero: 32px; /* Ask hero h2, 700, -0.015em */
+}

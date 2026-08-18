@@ -1,0 +1,82 @@
+# The Databricks App.
+# Configures the app, OAuth scopes, source path, and resource attachments.
+# The app source tree and serving endpoint are deployed separately.
+#
+# On a fresh workspace, deploy backing resources before the app:
+#
+#   pass 1  bundle deploy -t <target> --select postgres_projects.player_insights_lakebase \
+#                                     --select postgres_branches.player_insights_branch  \
+#                                     --select postgres_databases.player_insights_database \
+#                                     --select schemas.player_insights_schema \
+#                                     --select schemas.player_insights_telemetry_schema \
+#                                     --select volumes.player_insights_volume \
+#                                     --select genie_spaces.data_genie_space \
+#                                     --select genie_spaces.dictionary_genie_space \
+#                                     --select experiments.player_insights_experiment \
+#                                     --select jobs.player_insights_semantic_rebuild
+#           everything except this app
+#   ...    project your tables onto the data contract, then run
+#          bundle/agent-release.sh to create the serving endpoint
+#   pass 2  bundle deploy -t <target>
+#           creates the app
+#
+# source_code_path must be an absolute workspace path and must not contain
+# package.json, which would trigger `npm install` during app deployment.
+
+variables:
+  app_telemetry_schema:
+    description: >-
+      Separate schema inside ${var.app_catalog} for OpenTelemetry tables.
+      The bundle creates it, but ingestion stays off while
+      app_telemetry_destinations is empty. Keep telemetry outside
+      ${var.app_schema}.
+    default: player_insights_telemetry
+  app_telemetry_destinations:
+    description: >-
+      OpenTelemetry export destinations. Defaults to an empty list, which
+      disables telemetry and ingestion charges. Set this only with
+      app_telemetry_schema after approving the billed ingestion. Tables do not
+      backfill and begin receiving data after the app is redeployed.
+    type: complex
+    default: []
+
+resources:
+  apps:
+    player_insights_app:
+      name: ${var.app_name}
+      description: ${var.app_description}
+      source_code_path: ${var.app_source_code_path}
+
+      # Optional OpenTelemetry destinations. Empty disables telemetry.
+      # This feature is region-limited and can create ingestion charges.
+      telemetry_export_destinations: ${var.app_telemetry_destinations}
+
+      # OAuth scopes for the signed-in user's forwarded token. Keep this list
+      # minimal: one unavailable required scope can block sign-in. Catalog
+      # *:read scopes are optional for the login gate; Vector Search scopes are
+      # required when a semantic index is deployed. Scope changes need a full
+      # app stop/start and a fresh sign-in.
+      user_api_scopes: ${var.app_user_api_scopes}
+
+      # These bindings grant the app service principal access to its state
+      # store, serving endpoint, and SQL warehouse. Do not bind governed tables
+      # or Genie spaces; governed reads must use the signed-in user's token.
+      resources:
+        - name: postgres
+          postgres:
+            branch: ${var.postgres_branch_name}
+            database: ${var.postgres_database_name}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: serving-endpoint
+          serving_endpoint:
+            name: ${var.serving_endpoint_name}
+            permission: CAN_QUERY
+        # This binding supplies the warehouse ID and grants app access.
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_MANAGE
+
+      lifecycle:
+        # Destroying the app also removes its service principal and grants.
+        prevent_destroy: true

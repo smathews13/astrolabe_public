@@ -1,0 +1,61 @@
+/*
+ * The app's two typefaces, served from this deployment rather than from a font CDN.
+ *
+ * Databricks Apps egress rules forbid the CDN, and a font that fails to load is not a
+ * cosmetic loss here: the numerals in the trace tables and the metric tiles are laid out
+ * on the assumption that they are tabular, so a fallback that proportionally spaces
+ * digits shifts every column. `font-display: swap` is therefore the right trade even
+ * though it costs a flash — the fallback stack in tokens.css is picked so the reflow is
+ * small, and the alternative is invisible text on a slow first paint.
+ *
+ * The files live in client/public, which vite copies verbatim, so these URLs are absolute
+ * from the served root and survive both the vite build and the committed bundle that the
+ * browser-only "From Git" deploy reads. They are also pinned by hash in
+ * mirror/reviewed-binaries.txt: a new binary in the tree blocks publication until someone
+ * has said what it is, and these are the first non-icon binaries the app has carried.
+ */
+
+/* DM Sans, as a variable font: one file covers 400/500/700 rather than three. From
+   @databricks/design-system 2.0.1 (dist/fonts/dm-sans), so the app's body text is the
+   same file DuBois itself ships. Latin subset only, matching what that package ships. */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/DMSans-variable.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/*
+ * DM Mono is not in the DuBois package and was taken from the same upstream project, at
+ * the two weights the design uses. There is no variable release, so this is two files.
+ *
+ * The mono face carries identifiers, SQL, correlation ids and every configured value —
+ * text a reader is expected to compare character by character or copy verbatim. That is
+ * why it is worth 17KB: `l` against `1` and `0` against `O` are distinguishable in it and
+ * are not in DM Sans.
+ */
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/DMMono-Regular.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/DMMono-Medium.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

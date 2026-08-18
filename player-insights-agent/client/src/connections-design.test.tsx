@@ -1,0 +1,606 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
+import { describe, expect, it } from 'vitest';
+
+import { ConfigurationList, ConnectionRow, ConnectionsCounts, RESOURCE_PRODUCT, configurationValue, DataCatalogsValue, CatalogDenylistValue } from './ConnectionsPage';
+import { BRAND_MARKS, BRAND_THEME_MARKS } from './brand-icons';
+import { buildFacts, compareCommits } from './connection-build';
+import { groupConnections, readConnections, type SettingsPayload } from './connection-model';
+import { truncateHead } from './connection-status';
+import type { PreflightCheck } from './preflight';
+import { CONNECTED_RESOURCES, connectedResource } from '../../shared/deployment-config';
+import {
+  EMPTY_CATALOG_DENYLIST,
+  EMPTY_DATA_CATALOGS,
+  SINGLE_SCHEMA_LABEL,
+  WHOLE_CATALOG_LABEL,
+} from '../../shared/data-catalog-scope';
+
+/**
+ * The three blocks the Connections redesign introduced, read as a reader reads
+ * them rather than as their sources read.
+ *
+ * The tab had drifted a long way from the design it was specified against, and
+ * the shape of the drift was always the same: a verdict repeated as a chip on
+ * every row, a fact stated as a sentence explaining the section it sat in, and a
+ * count of nothing printed because the code had a number to hand. Each of those
+ * is invisible in a unit test of the module that decides it and obvious in the
+ * composed markup, so the assertions below are made against rendered text.
+ *
+ * `renderToStaticMarkup` runs no effects, which is why the blocks are rendered
+ * directly. From the page every one of them sits behind a fetch a static render
+ * never issues.
+ */
+
+function text(markup: string): string {
+  return markup
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;/g, '\u2019')
+    .replace(/&middot;/g, '\u00b7')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function render(node: React.ReactElement): string {
+  return renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
+}
+
+function check(id: string, status: PreflightCheck['status'], over: Partial<PreflightCheck> = {}): PreflightCheck {
+  return {
+    id,
+    kind: 'dependency',
+    name: '',
+    label: id,
+    status,
+    detail: '',
+    checked_with: '',
+    duration_ms: 0,
+    error: '',
+    remedy: null,
+    ...over,
+  };
+}
+
+function row(id: string, over: Record<string, unknown> = {}) {
+  return {
+    resource: connectedResource(id)!,
+    configured: '',
+    configuredFrom: 'artifact',
+    actual: '',
+    actualObserved: false,
+    intended: null,
+    intendedAt: '',
+    intendedBy: '',
+    editable: false,
+    changedByLabel: 'Set by the release',
+    changedByNote: '',
+    ...over,
+  } as SettingsPayload['resources'][number];
+}
+
+function payload(over: Partial<SettingsPayload> = {}): SettingsPayload {
+  return {
+    resources: [],
+    drift: [],
+    status: 'ok',
+    appBuildSha: '',
+    modelBuildSha: '',
+    orchestratorReported: false,
+    storeAvailable: true,
+    checkedAt: '2026-08-15T18:00:00Z',
+    ...over,
+  };
+}
+
+function groupsFor(resources: SettingsPayload['resources'], checks: PreflightCheck[] = []) {
+  return groupConnections(readConnections(payload({ resources, checks }), []));
+}
+
+/**
+ * Two values with no remote end, which is what puts them in Configuration. The
+ * rail is an app setting and the token cap is an orchestrator one, so between
+ * them the list carries both affordances and both products.
+ */
+const CONFIG_ROWS = [
+  row('max-output-tokens', { configured: '4000' }),
+  row('shared-conversation-rail', { configured: 'false' }),
+];
+
+describe('the sections the rows are grouped into', () => {
+  /**
+   * THE DEFECT THIS REPLACED. Every row carried its own status chip, and the
+   * sections were named after what a dependency IS -- "Data and compute" and
+   * three more like it -- so a blocked warehouse was the eleventh row of the
+   * third group and its verdict was a chip a reader had to go and find.
+   */
+  it('says each verdict once, in the header, and not again on any row', () => {
+    const groups = groupsFor(
+      [row('sql-warehouse', { configured: 'wh-0001' }), row('catalog', { configured: 'a_catalog' })],
+      [check('sql-warehouse', 'failed'), check('catalog', 'ok')],
+    );
+    expect(groups.map((group) => group.key)).toEqual(['blocked', 'reachable']);
+
+    const rows = groups
+      .flatMap((group) => group.readings)
+      .map((reading) => render(<ConnectionRow
+            reading={reading}
+            tone="blocked"
+            saving={false}
+            refreshing={false}
+            requested={false}
+            onSave={() => Promise.resolve(true)}
+            onClear={async () => {}}
+          />,
+        ),
+      )
+      .join('');
+    // The chip's own words, which are what a per-row verdict looked like.
+    expect(text(rows)).not.toMatch(/\bBlocked\b|\bNot checked\b|\bReachable\b/);
+  });
+
+  /**
+   * A count belongs beside "Not checked" and nowhere else. That section is the
+   * extent of what this page does not know, which is the thing somebody wants
+   * the size of; a number beside "Blocked" would read as a second severity, and
+   * the rows under a verdict are countable at a glance anyway.
+   */
+  it('measures the section nobody checked, and none of the others', () => {
+    const groups = groupsFor(
+      [
+        row('sql-warehouse', { configured: 'wh-0001' }),
+        row('genie-data', { configured: 'space-data' }),
+        row('genie-dictionary', { configured: 'space-dictionary' }),
+      ],
+      [check('sql-warehouse', 'ok')],
+    );
+    const asides = new Map(groups.map((group) => [group.key, group.aside]));
+    expect(asides.get('not-checked')).toBe('2 dependencies');
+    expect(asides.get('reachable')).toBe('');
+  });
+
+  it('counts one unchecked dependency in the singular', () => {
+    const groups = groupsFor([row('genie-data', { configured: 'space-data' })], []);
+    expect(groups[0]?.aside).toBe('1 dependency');
+  });
+});
+
+describe('the Configuration list', () => {
+  /**
+   * These are the values with no remote end. They were drawn as dependencies --
+   * a caret to expand, a chip reading "Nothing to reach" -- so five rows of the
+   * page's most emphatic furniture were spent asserting there was nothing to
+   * assert.
+   */
+  function configuration() {
+    const group = groupsFor(CONFIG_ROWS).find((candidate) => candidate.key === 'configuration')!;
+    return render(<ConfigurationList group={group} saving="" requestedResource="" onSave={() => Promise.resolve(true)} onClear={async () => {}} />);
+  }
+
+  it('reaches no verdict about a value with nothing to reach', () => {
+    const rendered = text(configuration());
+    expect(rendered).not.toMatch(/nothing to reach/i);
+    expect(rendered).not.toMatch(/not checked/i);
+  });
+
+  it('opens no disclosure, because there is no second reading behind one', () => {
+    expect(configuration()).not.toMatch(/aria-controls|connection-row-caret/);
+  });
+
+  it('reads a switch as a switch rather than as the word the environment uses', () => {
+    expect(configurationValue('true')).toBe('on');
+    expect(configurationValue('false')).toBe('off');
+    expect(configurationValue(' 4000 ')).toBe('4000');
+  });
+
+  it('offers the pencil only where something can write the value', () => {
+    const editable = render(<ConfigurationList
+        group={groupsFor([row('max-output-tokens', { configured: '4000', editable: true })]).find((group) => group.key === 'configuration')!}
+        saving=""
+        requestedResource=""
+        onSave={() => Promise.resolve(true)}
+        onClear={async () => {}}
+      />,
+    );
+    expect(editable).toContain('data-affordance="write"');
+    expect(configuration()).toContain('data-affordance="locked"');
+  });
+});
+
+describe('data_catalogs and catalog_denylist on the Configuration list', () => {
+  /**
+   * Both already rode the settings path as configuration rows. What was wrong
+   * was the reading: a truncated string, or "not set", with no way to tell a
+   * whole-catalog grant from a single-schema one, and an empty denylist looking
+   * like a missing value.
+   */
+  function listFor(...rows: ReturnType<typeof row>[]) {
+    const group = groupsFor(rows).find((candidate) => candidate.key === 'configuration')!;
+    return render(<ConfigurationList group={group} saving="" requestedResource="" onSave={() => Promise.resolve(true)} onClear={async () => {}} />);
+  }
+
+  it('labels a whole-catalog entry and a single-schema entry differently', () => {
+    const markup = render(
+      <DataCatalogsValue configured="production_catalog, shared.reference_data" />,
+    );
+    expect(markup).toContain('data-scope-form="whole-catalog"');
+    expect(markup).toContain('data-scope-form="single-schema"');
+    expect(markup).toContain('production_catalog');
+    expect(markup).toContain('shared.reference_data');
+    expect(text(markup)).toContain(WHOLE_CATALOG_LABEL);
+    expect(text(markup)).toContain(SINGLE_SCHEMA_LABEL);
+    expect(text(markup)).not.toMatch(/—|–/);
+  });
+
+  it('says an empty read scope means the agent can query nothing', () => {
+    const markup = render(<DataCatalogsValue configured="" />);
+    expect(text(markup)).toBe(EMPTY_DATA_CATALOGS);
+    expect(text(markup)).not.toMatch(/not set|not configured/i);
+  });
+
+  it('reads an empty denylist as nothing excluded, not as an error', () => {
+    const markup = render(<CatalogDenylistValue configured="" />);
+    expect(text(markup)).toBe(EMPTY_CATALOG_DENYLIST);
+    expect(markup).not.toMatch(/warning|error|missing|ast-pill--danger|ast-pill--warn/i);
+    expect(text(markup)).not.toMatch(/not set/i);
+  });
+
+  it('shows denylist patterns when any are set', () => {
+    expect(text(render(<CatalogDenylistValue configured="raw_*, *.scratch" />))).toContain('raw_*');
+    expect(text(render(<CatalogDenylistValue configured="raw_*, *.scratch" />))).toContain('*.scratch');
+  });
+
+  it('draws both through the Configuration list rather than as dependency rows', () => {
+    const rendered = listFor(
+      row('catalog-allowlist', { configured: 'analytics, analytics.demo' }),
+      row('catalog-denylist', { configured: '' }),
+    );
+    expect(rendered).toContain('data-testid="configuration-catalog-allowlist"');
+    expect(rendered).toContain('data-testid="configuration-catalog-denylist"');
+    expect(text(rendered)).toContain(WHOLE_CATALOG_LABEL);
+    expect(text(rendered)).toContain(SINGLE_SCHEMA_LABEL);
+    expect(text(rendered)).toContain(EMPTY_CATALOG_DENYLIST);
+    expect(text(rendered)).not.toMatch(/nothing to reach/i);
+  });
+});
+
+describe('the product marks on the rows', () => {
+  /**
+   * WHAT THIS REPLACED. Every row drew the nearest Lucide shape to its product
+   * -- a bot for the agent, a warehouse for the warehouse, a radar dish for
+   * Vector Search -- because the official artwork was not in the repository. A
+   * reader who knows the real marks read the lookalikes as real ones and was
+   * then wrong about which product a row pointed at.
+   *
+   * Asserted against the artwork itself rather than against a class name: the
+   * failure worth catching is a mark that is missing or is the wrong product's,
+   * and both of those leave `class="brand-icon"` exactly where it was.
+   */
+  it('draws each product its own official mark', () => {
+    const groups = groupsFor(
+      [row('sql-warehouse', { configured: 'wh-0001' }), row('genie-data', { configured: 'space-data' })],
+      [check('sql-warehouse', 'ok'), check('genie-data', 'ok')],
+    );
+    const rendered = groups
+      .flatMap((group) => group.readings)
+      .map((reading) => render(<ConnectionRow
+            reading={reading}
+            tone="reachable"
+            saving={false}
+            refreshing={false}
+            requested={false}
+            onSave={() => Promise.resolve(true)}
+            onClear={async () => {}}
+          />,
+        ),
+      )
+      .join('');
+    // The recoloured cut, which is what this page draws now: official geometry
+    // in the palette, `#2272B4` over `#B7D6EE` on a white row. The published
+    // full-colour artwork must not be beside it -- half a list in one ink set and
+    // half in the other reads as a rendering fault rather than as a mistake.
+    expect(rendered).toContain(BRAND_THEME_MARKS.light['databricks-sql']);
+    expect(rendered).toContain(BRAND_THEME_MARKS.light.genie);
+    expect(rendered).not.toContain(BRAND_MARKS['databricks-sql']);
+  });
+
+  /**
+   * A kind with no mark draws nothing at all, which is a gap in a column rather
+   * than an error anybody sees. The record is exhaustive by type, so this is
+   * really a guard against a slug that type-checks and has no artwork behind it.
+   */
+  it('has a mark for every kind of thing this deployment connects to', () => {
+    const kinds = new Set(CONNECTED_RESOURCES.map((resource) => resource.kind));
+    for (const kind of kinds) {
+      expect(RESOURCE_PRODUCT[kind], kind).toBeTruthy();
+      expect(BRAND_THEME_MARKS.light[RESOURCE_PRODUCT[kind]], kind).toContain('<svg');
+    }
+  });
+
+  /**
+   * The mark is decorative in both lists. The product's name is the label
+   * immediately beside it, and a mark that announced itself would have a screen
+   * reader read the product twice.
+   */
+  it('leaves the announcing to the label beside it', () => {
+    const group = groupsFor(CONFIG_ROWS).find((candidate) => candidate.key === 'configuration')!;
+    const rendered = render(<ConfigurationList group={group} saving="" requestedResource="" onSave={() => Promise.resolve(true)} onClear={async () => {}} />);
+    expect(rendered).toContain(BRAND_THEME_MARKS.light.apps);
+    expect(rendered).not.toMatch(/title="Databricks Apps"/);
+  });
+});
+
+describe('the value the app writes to, which the design wants green', () => {
+  const EXPERIMENT = [row('experiment-id', { configured: '<mlflow-experiment-id>' })];
+
+  /**
+   * The design asks for one tinted value in the Configuration list, and names
+   * the one: the MLflow experiment traces land in. THE GROUPING HAS ALREADY
+   * GRANTED IT, somewhere else -- which is why no branch in `ConfigurationList`
+   * tints anything.
+   *
+   * A row is in Configuration only when nothing checked it. The moment the
+   * experiment probe answers, the row has a remote end and moves to "Checked
+   * and reachable", where the value IS a green badge like every other reachable
+   * row's. A second tint inside Configuration would be dead on this deployment
+   * and, if the grouping ever changed, would paint an unreached value the same
+   * green as a reached one.
+   */
+  it('leaves Configuration for a reachable row the moment the probe answers', () => {
+    const keys = groupsFor(EXPERIMENT, [check('experiment-id', 'ok')]).map((group) => group.key);
+    expect(keys).toContain('reachable');
+    expect(keys).not.toContain('configuration');
+  });
+
+  it('is green there, as the design asks, without a rule of its own', () => {
+    const [reading] = groupsFor(EXPERIMENT, [check('experiment-id', 'ok')]).flatMap((group) => group.readings);
+    const rendered = render(<ConnectionRow
+        reading={reading}
+        tone="reachable"
+        saving={false}
+        refreshing={false}
+        requested={false}
+        onSave={() => Promise.resolve(true)}
+        onClear={async () => {}}
+      />,
+    );
+    expect(rendered).toContain('data-tone="reachable"');
+    expect(text(rendered)).toContain('<mlflow-experiment-id>');
+  });
+
+  /**
+   * And nothing in Configuration is ever tinted, which is the section's rule:
+   * nothing here was reached, so nothing here carries a verdict.
+   */
+  it('tints nothing in the Configuration list', () => {
+    const group = groupsFor([...EXPERIMENT, ...CONFIG_ROWS]).find((candidate) => candidate.key === 'configuration')!;
+    const rendered = render(<ConfigurationList group={group} saving="" requestedResource="" onSave={() => Promise.resolve(true)} onClear={async () => {}} />);
+    expect(rendered).not.toMatch(/data-tone="(reachable|blocked|drifted)"/);
+    expect(text(rendered)).toContain('<mlflow-experiment-id>');
+  });
+});
+
+describe('the Build and telemetry card', () => {
+  /**
+   * The hashes were a clause in a 12px grey line under a headline about
+   * reachability: `app build abc1234 · orchestrator build def5678 · ...`.
+   * Nothing about it said the two were a comparison, and the comparison is the
+   * only reason to print either.
+   */
+  it('is green only when both halves came from the same committed tree', () => {
+    const facts = buildFacts({ appBuildSha: 'abc1234def', modelBuildSha: 'abc1234def' });
+    expect(facts.notes).toEqual([]);
+    expect(facts.artifacts.map((artifact) => artifact.tone)).toEqual(['reachable', 'reachable']);
+  });
+
+  /**
+   * AND SAYS WHY, ONCE, IN WORDS THAT NAME THE HALVES. Sam read the live card as
+   * two bright red hashes with nothing explaining them: the reason was a two-word
+   * chip on the header strip, four rows up, and `Different commits` does not say
+   * which two things differ.
+   */
+  it('turns both halves red when they name different commits, and says so once', () => {
+    const facts = buildFacts({ appBuildSha: 'aaaaaaaa11', modelBuildSha: 'bbbbbbbb22' });
+    expect(facts.notes).toEqual([
+      'Different commits: the app and the orchestrator were not built from the same one.',
+    ]);
+    expect(facts.artifacts.every((artifact) => artifact.tone === 'blocked')).toBe(true);
+  });
+
+  /**
+   * `+dirty` is a fact about the build, not part of the commit: on screen
+   * `abc1234+dirty` is not a hash anybody can look up, and pasted into `git
+   * show` it fails.
+   */
+  it('keeps the working-tree suffix out of the hash and out of the clipboard', () => {
+    const [app] = buildFacts({ appBuildSha: 'abc1234def+dirty', modelBuildSha: '' }).artifacts;
+    expect(app.short).toBe('abc1234d');
+    expect(app.full).toBe('abc1234def');
+    expect(buildFacts({ appBuildSha: 'abc1234def+dirty', modelBuildSha: '' }).notes).toEqual([
+      'Uncommitted changes: one half was built from a tree with edits that were never committed.',
+    ]);
+  });
+
+  /**
+   * THE RELEASE GATE, AND THE WAY IT WAS SET TO FAIL ITS FIRST GREEN.
+   *
+   * The two stamps are written by two producers, so they can arrive at different
+   * lengths. The comparison was an exact string match, which meant the first
+   * release cut from ONE commit -- the release made specifically to turn these
+   * chips green -- would still have been reported as drift if the lengths
+   * differed. A card that cries drift on a clean release gets its check loosened
+   * under pressure, which is how a badge starts lying.
+   *
+   * So the rule is git's: an abbreviated hash identifies a commit when it is a
+   * prefix of it, with a seven-character floor because below that a match means
+   * nothing.
+   */
+  it('reads an abbreviation of a commit as that commit, at either end', () => {
+    const long = 'aaaaaaa1111bbbbbbb2222ccccccc3333ddddddd4';
+    expect(buildFacts({ appBuildSha: long.slice(0, 7), modelBuildSha: long }).differ).toBe(false);
+    expect(buildFacts({ appBuildSha: long, modelBuildSha: long.slice(0, 12) }).differ).toBe(false);
+    // And case is not a difference: a hash is hex, and git takes either.
+    expect(buildFacts({ appBuildSha: long.toUpperCase(), modelBuildSha: long }).differ).toBe(false);
+    expect(buildFacts({ appBuildSha: long.slice(0, 7), modelBuildSha: long }).notes).toEqual([]);
+  });
+
+  it('still calls two different commits different, leading characters and all', () => {
+    // The failure mode of a prefix test, held out by name: seven characters in
+    // common and the eighth apart is two commits, not one.
+    const facts = buildFacts({ appBuildSha: 'abc1234ffff', modelBuildSha: 'abc1234eeee' });
+    expect(facts.differ).toBe(true);
+    expect(facts.artifacts.every((artifact) => artifact.tone === 'blocked')).toBe(true);
+  });
+
+  /**
+   * A stamp under the floor is not agreement. Seven is git's own abbreviation
+   * length; two characters agree between one commit in 256, and a coin toss must
+   * not be reported as a matched release.
+   */
+  it('refuses to compare a stamp too short to identify a commit', () => {
+    const facts = buildFacts({ appBuildSha: 'abc1', modelBuildSha: 'abc1234ffff' });
+    expect(compareCommits('abc1', 'abc1234ffff')).toBe('unidentifiable');
+    expect(facts.differ).toBe(false);
+    // Not green either, and it says which way the reading failed.
+    expect(facts.artifacts.map((artifact) => artifact.tone)).toEqual(['plain', 'plain']);
+    expect(facts.notes).toEqual([
+      'Not comparable: a stamp shorter than 7 characters does not identify a commit, so whether these ' +
+        'two agree is unknown.',
+    ]);
+  });
+
+  /**
+   * An absent hash is not a failing one. Calling it a mismatch would put a red
+   * chip on every deployment whose model version predates the field.
+   */
+  it('stays quiet about a half that reported nothing', () => {
+    const facts = buildFacts({ appBuildSha: 'abc1234def', modelBuildSha: '' });
+    expect(facts.differ).toBe(false);
+    expect(facts.artifacts[1].tone).toBe('plain');
+    // Nothing red, so nothing to explain. An unread stamp is an absence, and the
+    // note that would go beside it would be explaining a fault nobody found.
+    expect(facts.notes).toEqual([]);
+  });
+});
+
+describe('the counts line, where the figures had to become tabular', () => {
+  const NONE = {
+    reachable: 0,
+    blocked: 0,
+    refused: 0,
+    unreachable: 0,
+    notChecked: 0,
+    nothingToReach: 0,
+    drifted: 0,
+    pending: 0,
+  };
+
+  /**
+   * THE FIGURES IN MONO, THE WORDS IN DM SANS, and the split is the whole fix.
+   *
+   * The line has always meant to be tabular: these counts change under the reader
+   * when a refresh lands, and proportional figures make the line reflow as they
+   * do. It asked for that with `font-variant-numeric` on DM Sans, which carries
+   * no `tnum` feature, so the rule did nothing and the test that read it back
+   * passed anyway.
+   *
+   * `.ast-num` has to be on the digits alone. Marking the whole phrase would
+   * satisfy any stylesheet test and set "reachable" in a code face, which in a
+   * 13px line reads as a value somebody escaped.
+   */
+  it('sets the figures in mono and leaves the words alone', () => {
+    const markup = renderToStaticMarkup(<ConnectionsCounts counts={{ ...NONE, reachable: 12, notChecked: 9 }} />);
+    expect(markup).toContain('<span class="ast-num">12</span> reachable');
+    expect(markup).toContain('<span class="ast-num">9</span> not checked');
+  });
+
+  /** The tone stays on the pair, so a tinted count colours its number and its word. */
+  it('tints the figure and the word together', () => {
+    const markup = renderToStaticMarkup(<ConnectionsCounts counts={{ ...NONE, blocked: 2 }} />);
+    expect(markup).toMatch(/data-tone="blocked"><span class="ast-num">2<\/span> blocked/);
+  });
+
+  /** And a zero still has no phrase at all, which is the line's oldest rule. */
+  it('prints nothing for a count of nothing', () => {
+    const markup = text(renderToStaticMarkup(<ConnectionsCounts counts={{ ...NONE, reachable: 3 }} />));
+    expect(markup).toBe('3 reachable');
+  });
+});
+
+/**
+ * The configuration plane, after the restyle.
+ *
+ * The two cards landed as working markup with their palette written into them as
+ * inline style objects, hex by hex, and a note that the lane rebuilding this tab
+ * would restyle them. What the plane DOES -- addable, removable, a way back from
+ * a removal, a note saying that adding grants nobody anything, a line saying what
+ * an empty allowlist means here -- is asserted in declared-connection-view.test.tsx
+ * against the fixtures that live there, and those assertions are the ones that
+ * prove the restyle took nothing with it. They are deliberately NOT restated here:
+ * a second set of fixtures for the same claims is a second thing to keep true, and
+ * the pair drift.
+ *
+ * What is here is what only a restyle can be wrong about, and what no test in that
+ * file would notice.
+ */
+describe('the configuration plane survived being restyled', () => {
+  function component(name: string): string {
+    const source = readFileSync(fileURLToPath(new URL(name, new URL('.', import.meta.url))), 'utf8');
+    // Comments stripped, because both files now discuss the hex and the native
+    // select they used to carry, and prose about a defect is not the defect.
+    return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  }
+
+  /**
+   * No hex, in either component. This is the assertion the restyle exists for: a
+   * colour written into a component is a recipe nobody else can see, and between
+   * them these two carried a fourth and fifth status palette on a page that had
+   * just converged twenty-one of them onto one.
+   */
+  it.each(['NotebookCard.tsx', 'DeclaredConnectionsCard.tsx'])('names no colour of its own in %s', (name) => {
+    expect(component(name)).not.toMatch(/#[0-9A-Fa-f]{3,8}\b/);
+    // And no inline style objects, which is how the hex got in and how it would
+    // come back.
+    expect(component(name)).not.toMatch(/CSSProperties/);
+  });
+
+  /**
+   * The kind picker was a native `<select>`, which opens the menu the operating
+   * system draws: unstyleable where it matters, and visibly not part of the app.
+   * Every other dropdown in the app is the same Radix Select, through `./ui`.
+   */
+  it('opens the app’s own menu rather than the operating system’s', () => {
+    expect(component('DeclaredConnectionsCard.tsx')).not.toMatch(/<select\b/);
+    expect(component('DeclaredConnectionsCard.tsx')).toMatch(/SelectTrigger/);
+  });
+
+  /**
+   * The grey line stayed a line. It says what an empty allowlist means HERE,
+   * which is the opposite of what the notebook means by it, and a pill would make
+   * a standing warning out of a deployment's ordinary configuration. The restyle
+   * had four pill families to hand and this is the row it would have reached for.
+   */
+  it('leaves the empty-allowlist line as a line rather than promoting it to a pill', () => {
+    const source = component('NotebookCard.tsx');
+    // The row it is rendered in, not the import that names it.
+    const line = source.match(/\{EMPTY_SCOPES_LABEL\}[\s\S]{0,240}/)?.[0] ?? '';
+    expect(line).toMatch(/plane-note/);
+    expect(line).not.toMatch(/Badge|ast-pill/);
+  });
+});
+
+describe('long values in a fixed column', () => {
+  /**
+   * The tail is the identifying part of every value this page prints: a table
+   * name, a volume path, a model URI. Truncating the end leaves a column of
+   * rows that all read `main.player_insights_de…`.
+   */
+  it('drops the head, so what distinguishes two values survives', () => {
+    const cut = truncateHead('main.<your_schema>.fact_sessions', 20);
+    expect(cut).toHaveLength(20);
+    expect(cut.startsWith('\u2026')).toBe(true);
+    expect(cut.endsWith('fact_sessions')).toBe(true);
+    expect(truncateHead('short', 20)).toBe('short');
+  });
+});

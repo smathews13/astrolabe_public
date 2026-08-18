@@ -1,0 +1,318 @@
+# Player Insights Agent Databricks Asset Bundle.
+# Variables without defaults are required deployment inputs.
+# The serving endpoint and app source tree are deployed separately.
+
+bundle:
+  name: player-insights-agent
+
+include:
+  - resources/*.yml
+
+# Variables without a `default` are required.
+variables:
+  # Deployment
+  bundle_root_path:
+    description: >-
+      Workspace folder for bundle state and synced files. Defaults to the
+      deploying identity's home. For CI/CD, use a shared folder with explicit
+      grants. Keep the `-dab` suffix to prevent bundle state collisions.
+    default: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}-dab/${bundle.target}
+
+  # Unity Catalog
+  app_catalog:
+    description: >-
+      REQUIRED. Unity Catalog catalog for objects owned by this deployment,
+      including the registered model, semantic layer, volume, and telemetry.
+      Keep it separate from production data catalogs.
+  app_schema:
+    description: >-
+      REQUIRED. Schema inside ${var.app_catalog} for objects owned by this
+      deployment. The bundle creates and protects this schema.
+  data_catalogs:
+    description: >-
+      REQUIRED. Complete Unity Catalog read scope for the agent. Supply a list
+      of catalog names and/or catalog.schema names. A catalog entry includes all
+      of its non-system schemas; a catalog.schema entry limits access to that
+      schema. Changing this list requires a model re-log and redeploy.
+    type: complex
+  volume:
+    description: Managed volume in the app schema for app-owned assets.
+    default: player_insights_assets
+  catalog_denylist:
+    description: >-
+      Comma-separated glob patterns for tables the agent must not declare.
+      Defaults to empty. Set this in variable-overrides.json or
+      BUNDLE_VAR_catalog_denylist, not `--var`, which splits comma-separated
+      values. Changing it requires a model re-log and redeploy.
+    default: ""
+
+  # Compute
+  warehouse_id:
+    description: >-
+      REQUIRED. ID of an existing PRO or SERVERLESS SQL warehouse used by Genie
+      and the agent. This bundle does not create or modify the warehouse.
+
+  warehouse_role_name:
+    description: >-
+      Expected warehouse name used for drift checks. Defaults to empty. Use a
+      stable role name rather than an instance-specific name.
+    default: ""
+
+  # Agent and model serving
+  serving_endpoint_name:
+    description: >-
+      Agent serving endpoint name. Created by `databricks.agents.deploy()`, not
+      by this bundle. Referenced here so the app resource can attach it.
+    default: player-insights-agent
+  serving_rollbacks_kept:
+    description: >-
+      Number of idle endpoint versions to retain after a release. Defaults to
+      0. Each retained served entity adds standing capacity cost; pruned
+      versions remain available in the model registry.
+    default: 0
+  llm_endpoint:
+    description: >-
+      Foundation-model endpoint, or three-level Unity Catalog model service
+      name when a gateway route is configured.
+    default: databricks-claude-sonnet-4-6
+  llm_gateway:
+    description: >-
+      Gateway route for llm_endpoint. Empty, the default, calls the workspace
+      endpoint directly. Use `mlflow` or `openai` for the corresponding gateway
+      path. Gateway failures do not fall back to a direct call.
+    default: ""
+  manifest_source:
+    description: >-
+      Source for the model's table manifest and resulting data grants. Empty,
+      the default, uses allowlisted schemas and the data contract. Use `genie`
+      to declare only tables curated by the Genie spaces. Changing this value
+      requires a model re-log and redeploy.
+    default: ""
+  model_name:
+    description: Three-level UC name of the registered agent model.
+    default: ${var.app_catalog}.${var.app_schema}.player_insights_agent
+  experiment_path:
+    description: Workspace path of the MLflow experiment for agent runs and traces.
+    default: /Shared/player-insights-agent
+  max_output_tokens:
+    description: Agent max output tokens (PLAYER_INSIGHTS_MAX_OUTPUT_TOKENS).
+    default: "2500"
+  judge_endpoint:
+    description: >-
+      Foundation-model endpoint for benchmark scoring only. Defaults to the
+      compiled app setting when empty. The Connections page can override it.
+    default: ""
+
+  # Genie
+  genie_parent_path:
+    description: Workspace folder that holds the two Genie spaces.
+    default: /Workspace/Shared
+  data_genie_tables:
+    description: >-
+      REQUIRED. List of fully qualified table objects for the data Genie space,
+      for example [{identifier: catalog.schema.table}]. Every table must fall
+      inside data_catalogs.
+    type: complex
+  dictionary_genie_tables:
+    description: >-
+      REQUIRED. List of fully qualified table objects for the dictionary Genie
+      space. Every table must fall inside data_catalogs.
+    type: complex
+  genie_data_space_id:
+    description: >-
+      Existing data Genie space ID to use instead of the bundle output. Defaults
+      to empty. Store overrides in variable-overrides.json. Its curated tables
+      must be a subset of the model manifest.
+    default: ""
+  genie_dictionary_space_id:
+    description: >-
+      Existing dictionary Genie space ID to use instead of the bundle output.
+      Defaults to empty and may be set independently of genie_data_space_id.
+    default: ""
+
+  # App
+  app_name:
+    description: >-
+      Databricks App name. <=26 chars, lowercase/digits/hyphens only.
+    default: player-insights-agent
+  app_description:
+    description: App description shown in the workspace.
+    default: Player insights, multi-agent traces, and repeatable benchmarking
+  shared_conversation_rail:
+    description: >-
+      Whether users can see shared conversations in the rail. Defaults to
+      "false". Only "true" enables shared reads; deleting, asking, and uploading
+      remain owner-scoped.
+    default: "false"
+  admin_emails:
+    description: >-
+      REQUIRED. Comma-separated app administrator email addresses. Set this only
+      in the git-ignored
+      `.databricks/bundle/<target>/variable-overrides.json`. Do not put addresses
+      in this tracked file or in a target block.
+  allow_unattributed_figures:
+    description: >-
+      Whether the agent may return figures it cannot trace to a governed read.
+      Defaults to "false"; only "true" enables it. This does not relax protected
+      column controls. Changing it requires a model re-log and redeploy.
+    default: "false"
+  execution_identity:
+    description: >-
+      Intended identity for data calls. Defaults to system-passthrough.
+      `user-authorization` runs Genie and SQL as the invoking user. The app and
+      logged model must use the same mode and be released together.
+    default: system-passthrough
+  app_user_api_scopes:
+    description: >-
+      OAuth scopes requested from the signed-in user. Keep this list minimal
+      because one unavailable required scope can block sign-in. The three
+      catalog.*:read scopes improve Connections and Ops Unity Catalog metadata
+      probes and workspace.workspace:read lets the Connections pickers browse,
+      but all four are optional for the login gate; Vector Search scopes are
+      required when a semantic index is deployed. Names here are the Apps API's
+      own, which are not the coarse families the OAuth server advertises: the
+      Apps API rejects `unity-catalog` and `workspace`. Adding or removing a
+      scope requires a full app stop and start, followed by a fresh user sign-in
+      to grant updated consent.
+    type: complex
+    default:
+      - serving.serving-endpoints
+      - model-serving
+      - sql
+      - dashboards.genie
+  app_source_code_path:
+    description: >-
+      REQUIRED. Absolute workspace path containing the deployed app source.
+      The directory must not contain package.json because the app would run
+      `npm install` during deployment.
+
+  # Lakebase
+  lakebase_project_id:
+    description: >-
+      REQUIRED. Lakebase project ID using lowercase letters, digits, and
+      hyphens. Confirm the ID before deploying because existing branches and
+      databases with matching names are updated.
+  lakebase_project_display_name:
+    description: >-
+      Human-readable Lakebase project name, shown in the workspace UI. Defaults
+      to the project id.
+    default: ${var.lakebase_project_id}
+  lakebase_branch_id:
+    description: Lakebase branch id the app connects to.
+    default: production
+  lakebase_database_id:
+    description: Lakebase database id inside the branch.
+    default: databricks-postgres
+  lakebase_app_schema:
+    description: >-
+      Postgres schema the app creates and owns. Defaults to player_insights.
+      This variable documents the app's fixed DDL value; changing it alone does
+      not reconfigure the app. The app service principal requires USAGE and
+      CREATE on this schema.
+    default: player_insights
+  lakebase_min_cu:
+    description: Lakebase autoscaling minimum compute units.
+    default: 1
+  lakebase_max_cu:
+    description: Lakebase autoscaling maximum compute units.
+    default: 1
+  lakebase_owner_role_id:
+    description: >-
+      REQUIRED. Existing Lakebase role ID that owns the database. Read the
+      `role_id` for your login from:
+        databricks postgres list-roles \
+          projects/<project>/branches/<branch> --profile <profile> -o json
+  # Derived full resource names. Do not override directly.
+  postgres_branch_name:
+    description: Full Lakebase branch resource name (derived).
+    default: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}
+  postgres_database_name:
+    description: Full Lakebase database resource name (derived).
+    default: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}/databases/${var.lakebase_database_id}
+  postgres_owner_role_name:
+    description: Full Lakebase owner role resource name (derived).
+    default: projects/${var.lakebase_project_id}/branches/${var.lakebase_branch_id}/roles/${var.lakebase_owner_role_id}
+
+  # Resource-specific variables are declared with their resource.
+
+# Exclude local build and test artifacts from bundle sync.
+sync:
+  exclude:
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/.smoke-test/**"
+    - "**/.ui-test-artifacts/**"
+    - "**/playwright-report/**"
+    - "**/test-results/**"
+    - agent/mlruns/**
+    - agent/mlflow.db
+
+targets:
+
+  # Production target. Set all required variables in the git-ignored
+  # `.databricks/bundle/<target>/variable-overrides.json`.
+  customer:
+    default: true
+    mode: production
+    workspace:
+      root_path: ${var.bundle_root_path}
+    variables:
+      # Declare only tables curated by the Genie spaces.
+      manifest_source: genie
+      # Run governed data calls as the signed-in user. Release matching app and
+      # model versions together.
+      execution_identity: user-authorization
+    resources:
+      jobs:
+        player_insights_semantic_rebuild:
+          name: "[${bundle.target}] Player Insights semantic layer rebuild"
+          description: Rebuilds app-owned semantic metadata and syncs its index.
+          run_as:
+            user_name: ${workspace.current_user.userName}
+          parameters:
+            - name: catalog
+              default: ${var.app_catalog}
+            - name: schema
+              default: ${var.app_schema}
+            - name: warehouse_id
+              default: ${var.warehouse_id}
+            - name: data_genie_space_id
+              default: ${resources.genie_spaces.data_genie_space.id}
+            - name: dictionary_genie_space_id
+              default: ${resources.genie_spaces.dictionary_genie_space.id}
+          tasks:
+            - task_key: rebuild_semantic_layer
+              environment_key: serverless
+              spark_python_task:
+                python_file: ./agent/semantic_layer_build.py
+                parameters:
+                  - --catalog
+                  - "{{job.parameters.catalog}}"
+                  - --schema
+                  - "{{job.parameters.schema}}"
+                  - --warehouse-id
+                  - "{{job.parameters.warehouse_id}}"
+                  - --data-genie-space-id
+                  - "{{job.parameters.data_genie_space_id}}"
+                  - --dictionary-genie-space-id
+                  - "{{job.parameters.dictionary_genie_space_id}}"
+                  - --apply
+          schedule:
+            quartz_cron_expression: ${var.semantic_rebuild_schedule}
+            timezone_id: UTC
+            # Review the job identity and first run result before unpausing.
+            pause_status: PAUSED
+          queue:
+            enabled: true
+          max_concurrent_runs: 1
+          email_notifications:
+            on_failure:
+              - ${workspace.current_user.userName}
+          environments:
+            - environment_key: serverless
+              spec:
+                client: "2"
+                dependencies:
+                  - databricks-sdk>=0.81.0

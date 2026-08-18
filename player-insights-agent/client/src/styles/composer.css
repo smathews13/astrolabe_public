@@ -1,0 +1,381 @@
+.composer {
+  position: fixed;
+  bottom: 20px;
+  /* Off the rails' widths plus the transcript's own inset, all three as tokens.
+     The inset was written out as its clamp here and again in ask.css, so this box
+     and the column it writes into agreed only by both being retyped correctly. */
+  left: calc(var(--conversation-width) + var(--conversation-inset));
+  right: calc(var(--trace-width) + var(--conversation-inset));
+  /*
+   * Capped and centred inside whatever the two insets leave.
+   *
+   * The design gives the composer the same 720px the suggestion grid above it
+   * takes, so the two line up on an empty screen. `margin-inline: auto` is what
+   * centres it: with both `left` and `right` set and a used width clamped by
+   * `max-width`, the leftover space is split between the auto margins rather than
+   * being dumped on one side.
+   */
+  max-width: 720px;
+  margin-inline: auto;
+  z-index: 20;
+  /* The one element in the app that genuinely sits over scrolling content, so it
+     has to be opaque; it was 96% white with a 40px drop shadow and a translucent
+     white halo, which is the frosted treatment rather than an honest surface. The
+     strong border rung is what separates it from the transcript now. */
+  background: var(--background);
+  border: 1px solid var(--db-line-strong);
+  border-radius: var(--radius-md);
+  /*
+   * No padding, and the reason is the footer strip below: the field and the strip
+   * both reach the container's own edge, so the strip's wash is a band across the
+   * whole bottom of the composer rather than a rounded rectangle floating inside a
+   * white margin. Each part pads itself instead. `overflow: hidden` is what keeps
+   * the strip's square corners inside the container's rounded ones.
+   */
+  padding: 0;
+  overflow: hidden;
+}
+/* Typing a question is the app's main action, so the composer wears the action
+   colour while it has focus. The ring sits on the container rather than the
+   textarea, so the whole thing reads as one surface, and it is the same 2px solid
+   blue at 2px offset that every other focusable thing draws. */
+.composer:focus-within {
+  border-color: var(--db-blue-600);
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: 2px;
+}
+/* Borderless, because the container is the field as far as the reader is
+   concerned: an inner border drew a second box inside the first and made the
+   composer look like a panel with an input in it. */
+.composer textarea {
+  border: 0;
+  border-radius: 0;
+  resize: none;
+  box-shadow: none;
+  min-height: 54px;
+  padding: 14px 16px;
+  background: transparent;
+  color: var(--foreground);
+}
+/* The container already draws the focus ring; a second one inside it is noise. */
+.composer textarea:focus-visible {
+  outline: none;
+}
+.composer textarea::placeholder {
+  color: var(--db-slate);
+}
+/*
+ * The run, when there is no column left to put it in.
+ *
+ * Below 1180px the inspector is gone, and everything it carried that the reader
+ * cannot get to any other way moves here: what the run is doing, and the way into
+ * the whole of it. A strip along the top of the composer rather than a floating
+ * bar, because the composer is the one element already pinned above the fold at
+ * these widths -- a second fixed element would need its own height arithmetic and
+ * would get it wrong the first time the notice above it wrapped.
+ *
+ * Mirrors the footer strip below the field on purpose: same wash, same hairline,
+ * same padding. The composer between them is the white part.
+ *
+ * `display: none` here; responsive.css turns it on at 1180px, the same width that
+ * hides the column it stands in for, so the run can never be in both places or
+ * neither.
+ */
+.trace-summary {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--db-line);
+  background: var(--db-wash);
+  font-size: 12px;
+}
+/* The link takes the right-hand end, so it is where the submit button below it is
+   rather than wherever the status text happens to stop. */
+.trace-summary-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.trace-summary-link:hover {
+  text-decoration: underline;
+}
+.trace-summary-link svg {
+  width: 13px;
+  height: 13px;
+}
+/* The lost-write disclosure, said in full rather than shortened to fit: it is the
+   sentence that tells the reader the answer above them will not be here tomorrow.
+   Red as type on the wash is 4.70:1. */
+.trace-summary-note {
+  flex: 1 1 100%;
+  color: var(--db-red-600);
+  line-height: 1.45;
+}
+/* The sentence that says a document list could not be read, above the field it is
+   about. Padded to the field's own inset rather than the container's, which no
+   longer has one. */
+.composer-notice {
+  margin: 0;
+  padding: 12px 16px 0;
+  font-size: 12px;
+  color: var(--db-slate);
+}
+.attachment-list {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+.attachment-chip {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, 1fr) 20px;
+  align-items: start;
+  gap: 8px;
+  min-width: 210px;
+  max-width: 320px;
+  border: 1px solid var(--border);
+  /* 8px, down from 9px: this is a bordered card holding a filename, a size and a
+     dismiss button, so it takes the panel radius the rest of them take. */
+  border-radius: var(--radius-md);
+  padding: 8px 9px;
+  background: var(--muted);
+}
+.attachment-chip > svg {
+  margin-top: 1px;
+}
+.attachment-chip > span {
+  min-width: 0;
+}
+.attachment-chip strong,
+.attachment-chip small {
+  display: block;
+}
+.attachment-chip strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-chip small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* "Still parsing", which is a live state, and the one live state in the app that
+   orange cannot mark: it is a 1px edge, and the working colour is filled masses
+   only. So it takes the action colour, which is where an in-flight attachment sat
+   before the revamp too — this border was one of the things --primary repainted
+   back when --primary was ink. Stated rather than inherited even so, because it
+   must not drift onto the danger family if --primary ever moves: the chip beside
+   it uses that family to mean "this failed". */
+.attachment-chip.parsing {
+  border-color: var(--db-blue-600);
+}
+.attachment-chip.parsing small {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.attachment-chip.error {
+  /* Extraction failures are full sentences, so this chip grows and wraps instead of
+     clipping the message down to a generic-looking stub. */
+  max-width: 420px;
+  border-color: var(--db-red-line);
+  background: var(--db-red-wash);
+}
+.attachment-chip.error > svg {
+  color: var(--destructive);
+}
+/* The message itself, in red on the red wash: 4.99:1. */
+.attachment-chip.error small {
+  color: var(--db-red-600);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.attachment-chip button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.attachment-chip button:hover {
+  color: var(--foreground);
+}
+.attachment-chip button svg {
+  width: 14px;
+}
+/*
+ * The footer strip.
+ *
+ * A band of the wash under a hairline, holding the two controls and the AI-caveat
+ * line. Its job is to separate what you type from what you press: the strip is the
+ * only part of the composer that is not the field, and before it there was nothing
+ * saying so -- three controls sat on the same white as the text, in a row that
+ * could have been anywhere on the page.
+ *
+ * Asymmetric padding, from the design: 16px on the left so "Attach context" lines
+ * up with the placeholder above it, 8px on the right so the submit button's own
+ * padding does the rest.
+ */
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border-top: 1px solid var(--db-line);
+  background: var(--db-wash);
+}
+/* The caveat line takes the slack, which is what puts the submit button hard right
+   however many ghost controls are to its left. */
+.composer-actions > span {
+  flex: 1;
+  font-size: 12px;
+  color: var(--db-slate);
+}
+/* 32px, the design's control height, on both the ghost controls and the submit. */
+.composer-actions [data-slot='button'] {
+  height: 32px;
+}
+/*
+ * The attach control's four states, none of which it had.
+ *
+ * It worked, and it said nothing about working. The reason is worth writing down
+ * because it is invisible in both files that cause it: AppKit's `ghost` variant
+ * is `hover:bg-accent`, --accent is `var(--db-wash)`, and .composer-actions above
+ * is `background: var(--db-wash)`. So the hover state has always been the strip's
+ * own colour painted onto the strip -- a rule that fires, computes, and changes
+ * nothing a reader can see. Press had no rule at all, in any variant. And a
+ * control that gives no answer to a click is a control people click twice, which
+ * on this one starts a second upload over the same `<input>` element.
+ *
+ * All four are stated here rather than left to the variant, and the two tints are
+ * the app's own hover and press weights of the action blue, which is what every
+ * other ghost control in the app (the nav tabs, the rail's chips, the gate's
+ * doors) already goes to under the pointer. No border on any of them: the control
+ * has none at rest, so adding one on hover would widen its box by two pixels and
+ * shove the caveat line and the submit button along the strip.
+ */
+.composer-attach {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.composer-attach:hover {
+  background: var(--db-hover-tint);
+  color: var(--db-ink);
+}
+.composer-attach:active {
+  background: var(--db-press-tint);
+  color: var(--db-ink);
+}
+/*
+ * The ring is restated rather than inherited from base.css, and that is a
+ * decision rather than a duplicate: the button variant sets `outline-none` and
+ * its own `focus-visible:ring-ring/50`, both Tailwind utilities, so which of the
+ * two draws the ring on this control is currently settled by layer order between
+ * a dependency's classes and the app's stylesheet. It is settled here instead.
+ * Same 2px solid blue at 2px offset as everything else, and the wash under it as
+ * well, because the strip is 8px taller than the control and a reader tabbing
+ * through the composer should not have to find a 2px line to know where they are.
+ */
+.composer-attach:focus-visible {
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: 2px;
+  background: var(--db-hover-tint);
+}
+/*
+ * Working: a file has been accepted and is being read, uploaded and parsed.
+ *
+ * The control is disabled for the whole of it -- that is what stops the second
+ * press -- and AppKit dims a disabled control to 50%, which on the one state
+ * where the control is doing something is the wrong way round: it would report
+ * "unavailable" for the seconds when what is true is "busy on your behalf". So
+ * the opacity comes back and the tint says which of the two it is. Keyed on
+ * `aria-busy`, which is the same fact the screen reader is given.
+ *
+ * Not the working orange, even though that is exactly what this state means
+ * everywhere else in the app: orange is reserved for filled masses and this is a
+ * wash behind a label, at 1px-hairline visibility. palette.test.ts also refuses
+ * an accent on anything pressable, and it is right to -- the reader needs to know
+ * this is a button before they need to know it is busy. The spinning glyph and
+ * the label carry the "right now"; see ATTACHING_LABEL in attach-control.ts.
+ */
+.composer-attach[aria-busy='true']:disabled {
+  opacity: 1;
+  background: var(--db-selected-tint);
+  color: var(--db-slate);
+}
+/*
+ * An honestly indeterminate progress bar.
+ *
+ * AppKit's Progress has no indeterminate mode: it positions the indicator with
+ * `translateX(-(100 - value)%)`, so a bar with no value renders empty and reads
+ * as stopped at zero. Passing `value={null}` makes Radix mark the root
+ * `data-state="indeterminate"`, which is the correct thing for assistive tech to
+ * hear, and this rule gives that state a visual. A sweep that says "working,
+ * for an unknown length of time" without claiming a fraction.
+ */
+[data-slot='progress'][data-state='indeterminate'] > [data-slot='progress-indicator'] {
+  width: 40%;
+  flex: none;
+  /*
+   * `!important` because AppKit writes `translateX(-100%)` as an INLINE style on
+   * this element, and an inline declaration beats a stylesheet one. Plain
+   * `transform: none` here read as done and did nothing: the segment was shifted
+   * a whole segment-width left of where the sweep put it, so it was entirely
+   * outside the track for the slow first part of every cycle -- a bar a reader
+   * catches empty most times they look at it, and empty for the whole of every
+   * run under `prefers-reduced-motion`, where the sweep is not moving it back
+   * into view. The sweep itself always looped; there was nothing on the track for
+   * it to move.
+   */
+  transform: none !important;
+  animation: pia-progress-sweep 1.4s ease-in-out infinite;
+  /* Blue, because §1 moves the whole agent-at-work register there: "the in-flight
+     bar" is named in the same breath as the live pill and the active step edge,
+     and §2 has no orange in the palette at all. The note here used to argue that
+     a sweep meaning "working, right now" was the definition of the orange token;
+     the restyle removes the token from the palette rather than answering that.
+     #2272B4 is 4.72:1 on white against the orange's 3.62:1, so the bar reads
+     better on AppKit's track than it did, and it is still a filled mass. */
+  background: var(--ast-blue);
+}
+@keyframes pia-progress-sweep {
+  0% {
+    margin-inline-start: -40%;
+  }
+  100% {
+    margin-inline-start: 100%;
+  }
+}
+/* Respect a reduced-motion preference: hold a steady partial bar instead of
+   sweeping. Still not a progress claim, just a "something is happening".
+
+   The width is the sweep's own 40%, restated rather than left to inherit so the
+   still frame is a decision on the page rather than the absence of one. It was
+   100%, which is the universal signal for finished: a reader who has asked their
+   operating system for less motion sat in front of a completed progress bar for
+   the whole of every run. A bar that is plainly short of its track cannot be read
+   as a fraction of anything, which is the same honesty the sweep buys by moving. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='progress'][data-state='indeterminate'] > [data-slot='progress-indicator'] {
+    animation: none;
+    width: 40%;
+    opacity: 0.45;
+  }
+}

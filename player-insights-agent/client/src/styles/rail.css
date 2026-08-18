@@ -1,0 +1,855 @@
+/* The two column widths used to be declared here and are in tokens.css now, at the
+   handoff's 264px and 300px. They have to be readable from outside this grid: the
+   composer is `position: fixed` and insets itself off both, and the responsive
+   block narrows the rail by restating one of them. */
+.ask-layout {
+  display: grid;
+  /*
+   * 264 / fluid / 340, and the asymmetry is the point rather than a slip.
+   *
+   * It was 264 both sides, which is the mockup's own grid, and the argument for it
+   * was that two equal columns put the hero and the composer -- both centred in
+   * the middle column -- on the window's centre line, where the README's 300px
+   * inspector would have left them 18px light. That argument was about the page's
+   * symmetry and it lost to what the column has to HOLD: the harness draws a
+   * constellation of the run, a step for every stage, and now a panel of what a
+   * step recorded, and at 264px the eyebrow wrapped mid-phrase, the status line
+   * could not print a step's name, and there was nowhere to open anything. The
+   * composer is 38px left of centre here, which is a cost paid in a place nobody
+   * measures for a column that is now read rather than glanced at.
+   *
+   * 340 is a width somebody chose, like the two below it: it is where the longest
+   * status line this agent writes fits on two lines rather than four, and it
+   * leaves the transcript its own measure at every window the inspector is drawn
+   * at (responsive.css hands the rail back its 264px in the tight band, where the
+   * middle column has nothing to spare).
+   *
+   * ONLY THE INSPECTOR IS RESTATED HERE NOW. The conversation column used to be
+   * overridden here too, on the argument that tokens.css is shared and this page
+   * should state what it uses. It has moved into tokens.css as a flat 264px,
+   * because the app header's brand column is now sized off the same number so
+   * that the first nav tab begins on this rail's edge -- and the header is not
+   * inside this grid, so it read the token rather than the override and got a
+   * different width than the rail it was supposed to line up with. One
+   * declaration, three readers: this grid, the fixed composer, and the header.
+   *
+   * Both are still flat, which was the other half of the original change. The
+   * tokens were `clamp(220px, 15vw, 264px)` and `clamp(280px, 21vw, 300px)`, so
+   * the columns narrowed continuously with the window and reached the design's
+   * widths only past 1760px -- a third breakpoint system, invisible, disagreeing
+   * with the two this document has just been reduced to one of. The rail is 264px
+   * until 1180px and 220px below it, and where it changes is a width somebody
+   * chose.
+   */
+  --trace-width: 340px;
+  grid-template-columns: var(--conversation-width) minmax(0, 1fr) var(--trace-width);
+  min-height: calc(100vh - var(--app-header-h));
+  width: 100%;
+}
+.conversation-rail,
+.trace-inspector {
+  position: sticky;
+  top: var(--app-header-h);
+  height: calc(100vh - var(--app-header-h));
+  /* Solid, and no blur. Both columns were 70% white with a 14px backdrop blur, so
+     the transcript scrolled visibly underneath them. */
+  background: var(--background);
+}
+/* 16px on all four sides, and 16px between the button, the filter block and the
+   rows: the design pads both side columns to the same figure it spaces them by, so
+   the rail reads as one column of blocks rather than as three loose groups. It was
+   22px top and bottom with 28px between, which put the first conversation 50px
+   below the button that makes one. */
+.conversation-rail {
+  border-right: 1px solid var(--db-line);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /*
+   * 16px on three sides and 8px on the fourth, and the missing 8px is the
+   * scrollbar's.
+   *
+   * The bar was drawn over the rows: a heavy grey column sitting on top of the
+   * titles it was scrolling, because a scroll container with no gutter reserved
+   * paints the bar inside its own padding box. `scrollbar-gutter: stable` reserves
+   * that strip whether or not the rail currently overflows, so nothing under it
+   * ever moves and nothing is ever covered -- and the reserve is why the padding
+   * on this edge is halved rather than kept: 8px of padding plus an 8px thin bar
+   * is the same 16px of clearance the other three sides have, so the rows keep
+   * every pixel of width they had.
+   */
+  padding: 16px 8px 16px 16px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Thin, and the app's own line grey on no track at all, rather than the
+     platform's default slab. The track is transparent so the rail's background is
+     what shows behind the thumb. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--db-line-strong) transparent;
+}
+/* 8px, because the inspector's head is a title with a pill beside it and then the
+   run: three things that belong to each other, unlike the rail's three blocks. */
+.trace-inspector {
+  border-left: 1px solid var(--db-line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 16px;
+  overflow-y: auto;
+}
+/*
+ * The inspector's head: what this column is, and what the run is doing.
+ *
+ * Two rows rather than one. §4 gives the column an eyebrow -- "LIVE AGENT
+ * HARNESS" -- and the pill sits on it rather than on the heading below, because
+ * the pill reports whether the harness is live and the heading names the list.
+ * `baseline` rather than `center`: an 11px eyebrow and a 20px pill centred
+ * against each other leave the letterforms sitting low.
+ */
+.trace-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+/*
+ * What the column holds.
+ *
+ * 16px rather than the 15px of a card heading, which is the design's size for a
+ * panel that names a column rather than an item inside one. The 2px above it is
+ * the only gap this heading needs: the inspector's own 8px row gap already
+ * separates it from the run below, and the eyebrow it follows belongs to it.
+ */
+.trace-title {
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+/*
+ * The run's status, as a pill with a dot.
+ *
+ * A Badge until now, which meant the four states were told apart by AppKit's
+ * variants: `default` for live, which is the blue of everything you can press, and
+ * `secondary` for both "Ready" and "Complete", which are the two ends of a run. The
+ * dot is what makes the state readable at rail width without reading the word, and
+ * the four tones below are the four things a run can be.
+ *
+ * Fixed geometry across all four, so a run moving from ready to live to complete
+ * cannot move the title beside it.
+ *
+ * THE RECIPE IS `.ast-pill`, and what is left here is this seating. §2 allows the
+ * app one status chip and this used to be a second one, written in its own hand
+ * against the retired db- line and radius. The border, the fill, the radius, the
+ * 11px and the 500 all come from the shared rule now; the family per tone is
+ * `RUN_TONE_FAMILY` in run-status.ts. Below are the three things a chip with a
+ * moving dot needs that a chip in general does not.
+ */
+.run-status {
+  flex: none;
+  /* One pixel wider than the recipe's own gap, and it is the dot's. A 6px circle
+     needs a hair more room beside a word than an icon does, and the check that
+     replaces it sits in the same lane with a negative margin to match. */
+  gap: 5px;
+  white-space: nowrap;
+}
+.run-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentcolor;
+}
+/* The finished badge's check, in the same 6px lane the dot sits in so the label
+   beside it does not move between the two. It is a glyph rather than a fill, so it
+   needs the room a dot does not: 11px reads at this size where 6px is a smudge.
+   `currentColor` throughout, which is the green the word is already in. */
+.run-status-check {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  margin: 0 -2px;
+}
+/* Reachable, failed and waiting were three rules of fill and hairline here, each
+   naming a retired db- wash. They are `ast-pill--pos`, `--neg` and
+   `--neutral-outline` now, chosen in `RUN_TONE_FAMILY` -- and the dot needs no
+   rule of its own with them, because it is `currentcolor` and the recipe already
+   sets the word's colour. The one that remains below is live, which is a solid
+   the five families do not draw. */
+/*
+ * The agent is working, and it is BLUE.
+ *
+ * §4 gives this pill as "Ready (green) or Live (solid blue #2272B4)", and §1
+ * moves the whole agent-at-work register with it: "The agent at work is blue
+ * #2272B4: live pill, in-flight bar, active step edge". It was orange, and the
+ * note here used to argue for it at some length -- that a sweep meaning "working,
+ * right now" was the definition of that token. The restyle takes the argument
+ * away rather than answering it: §2 has no orange in the palette at all, and the
+ * bricks symbol and the gate's logo are the only non-palette pixels in the app.
+ *
+ * A filled mass and nothing else, which is the part of the old rule that stands.
+ * The border goes transparent rather than blue, so the fill shows through the
+ * border box and this reads as a solid pill with no hairline at all. The 1px is
+ * still spent, so lighting up cannot resize the pill.
+ *
+ * White on #2272B4 is 4.72:1, which is better than the 3.62:1 the orange had and
+ * clears text contrast rather than merely the 3:1 a shape needs. The word carries
+ * the state as well as the colour, so the pill is never colour alone.
+ */
+.run-status.is-live {
+  border-color: transparent;
+  background: var(--ast-blue);
+  color: var(--ast-white);
+}
+/*
+ * The dot breathes while something is actually happening, and the pill behind it
+ * does not.
+ *
+ * The pill was entirely still for the whole of a run, which is the one state in
+ * the set where stillness is a claim about the system rather than about the
+ * design: a rail that has not moved in ninety seconds is how a run that is still
+ * going comes to be read as one that has hung. The step counter beside it does
+ * advance, but only every few seconds and only by one character at rail width.
+ *
+ * ONE ANIMATION, TWO COLOURS, AND A CLASS THAT IS NOT A TONE. `is-alive` is worn
+ * by the working pill and by the idle one whose endpoint has answered, and it
+ * cannot be replaced by either tone it appears with. `is-ready` is also what a
+ * finished run wears, and a completed run whose dot went on breathing would be
+ * claiming the harness was doing something; `is-live` alone would leave the
+ * green pill still. So the keyframes move opacity and scale and touch no colour
+ * at all, and the dot takes its hue from `currentcolor` -- white on the solid
+ * blue, the positive family's own ink on the green.
+ *
+ * Only the dot moves. Modulating a pill's own fill was the other candidate and it
+ * is barred by arithmetic rather than by taste: a fill that lightens and darkens
+ * under a label swings that label's contrast twice a second, and the live pill's
+ * white on #2272B4 is 4.72:1 with no room to spend. The dots carry no text, so
+ * their own contrast is nobody's floor. Both are redundant with the word beside
+ * them and both are `aria-hidden`, so neither is a state anyone has to read from
+ * a circle.
+ *
+ * `opacity` and `transform` rather than `width`/`background`: both are composited,
+ * so a pill that beats for the length of a long run costs no layout and no repaint,
+ * and the dot is `flex: none` at a fixed 6px, so scaling it cannot move the label.
+ * 1.6s is slow enough to read as breathing rather than blinking; the trough stays
+ * at 0.55 so there is never a frame where the dot has plainly gone out, which
+ * would read as a fault rather than as a pulse.
+ */
+@keyframes run-status-breath {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.72);
+  }
+}
+.run-status.is-alive .run-status-dot {
+  animation: run-status-breath 1.6s ease-in-out infinite;
+}
+/*
+ * Reduced motion: hold the dot, and let the words be the thing that moves.
+ *
+ * Same shape as the app's other three guards -- the indeterminate sweep in
+ * composer.css, the active node's halo in trace.css, the live list's scroll in
+ * LiveProgress.tsx -- and the same rule about what is left behind: stopping an
+ * animation may not be the same as deleting the state it was drawing. Nothing is
+ * lost here, because the dot is redundant twice over on both pills. The working
+ * one says "Live" and its step counter advances a step at a time, and the idle one
+ * says "Ready" only once an endpoint has answered for it -- both are changes over
+ * time that need no motion to be seen.
+ *
+ * Scoped to `is-alive` rather than to `.run-status-dot`, so the still pills are
+ * not carrying a reset for an animation they never had.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .run-status.is-alive .run-status-dot {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Failure. */
+/* NO LINE UNDER THE RAIL. `.trace-foot` was "Steps appear here as each one
+   completes.", which explained the surface rather than reporting on the run, and
+   which sat under a constellation already drawing the chain as it arrived. The
+   rule goes with the markup so the class cannot come back by being available. */
+/*
+ * The inspector with no run in it.
+ *
+ * Centred a third of the way down rather than at the top, which is the design's
+ * placement and the reason this is not AppKit's Empty: that component centres in
+ * whatever box it is given and this one is a full-height column, so it landed in
+ * the middle of the viewport, level with nothing.
+ */
+.trace-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 120px;
+  padding: 0 12px;
+  text-align: center;
+}
+/*
+ * A run in flight with no step reported yet, which is the flicker's inline row.
+ *
+ * Under the head rather than a third of the way down the column, which is the
+ * difference between this and `.trace-empty` beside it: an empty state is a
+ * statement about the column and belongs in the middle of it, while a loader is a
+ * report on the run and belongs where the first step is about to appear.
+ */
+.trace-working {
+  margin-top: 4px;
+}
+.trace-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--db-wash);
+  color: var(--db-grey-blue);
+}
+.trace-empty-mark svg {
+  width: 20px;
+  height: 20px;
+}
+.trace-empty strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+.trace-empty p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--db-slate);
+}
+/*
+ * The button that opens the rail as a sheet, drawn only below 800px.
+ *
+ * `display: none` here rather than in the media query, and it matters more than it
+ * looks: above 800px `.ask-layout` is a three-column grid and this button is a
+ * child of it, so anything short of `display: none` would take the middle cell and
+ * push the transcript into the inspector's column.
+ */
+.rail-sheet-trigger {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 16px 0;
+}
+.rail-sheet-count {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--db-chip);
+  color: var(--db-grey-blue);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * The rail inside the sheet.
+ *
+ * It drops the border it separated itself with and the sticky full-height box it
+ * needs when it is a column, and becomes the scrolling part of the panel instead.
+ *
+ * That last part is load-bearing rather than tidy. AppKit's sheet content is
+ * `fixed ... flex flex-col gap-4` and sets no overflow anywhere, so a list longer
+ * than the viewport simply runs off the bottom of a panel that cannot scroll --
+ * which is the same "you cannot reach it" this sheet exists to fix, moved four
+ * inches down. `min-height: 0` is what lets a flex child actually shrink enough to
+ * scroll; without it the child stays at its content height and the overflow moves
+ * back to the panel.
+ */
+.rail-sheet {
+  overflow: hidden;
+}
+.conversation-rail.is-sheet {
+  /*
+   * Restated, and it is the difference between a working sheet and an empty one.
+   *
+   * responsive.css hides `.conversation-rail` below 800px, which is the only width
+   * this copy is ever drawn at. That rule is one class in a media query and this
+   * one declared no display of its own, so the column's disappearance took the
+   * sheet's list with it: the panel opened, titled "Conversations", over nothing.
+   */
+  display: flex;
+  position: static;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  border-right: 0;
+  overflow-y: auto;
+}
+/*
+ * A row is the recorded-runs card from the Run Explorer, not a list line.
+ *
+ * The two lists are two views of the same thing -- one per answered turn there,
+ * one per conversation here -- and they were drawn in two different languages, so
+ * the same run read as a card with a status on one screen and as an untitled line
+ * with a date on the other. The card's parts are the same four in the same
+ * places: the status pill and the date on a head line, the question as the title,
+ * then who asked, how long it took and how they rated it on a meta line. Its
+ * recipe is restated rather than shared for the reason runs.css gives about the
+ * pill: a definition owned by one screen and used by the other is how a restyle
+ * of one silently repaints the other.
+ *
+ * The box treatment lives on the row, which wraps the two buttons -- selecting
+ * the conversation and deleting it -- so hover and selection light the whole entry
+ * rather than only the part under the pointer.
+ *
+ * THE 3px LEFT RULE IS GONE, and that is where some of the row's new width comes
+ * from. It was the rail's own selection marker on a row that had no border of its
+ * own; the card has one on all four sides in every state, so selection is that
+ * border going blue over the tint, exactly as the run cards do it, and a heavy
+ * rule down one edge of a bordered card reads as a rendering fault rather than as
+ * a marker.
+ */
+.conversation-row {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+/* Cards need to be told apart from each other, which a flush list of lines did
+   not. 6px is the gap inside a card too, so the rail reads as evenly spaced
+   blocks rather than as pairs. */
+.conversation-row + .conversation-row {
+  margin-top: 6px;
+}
+/*
+ * The whole of the card except its delete corner, and no padding of its own: the
+ * card pads itself now, so the three lines run the full width between its borders
+ * rather than being inset again by a nested button.
+ *
+ * That inset is most of the horizontal room this row gained. At 264px the title
+ * used to have about 185px: the rail's padding, then a 3px marker, then the row's
+ * own right padding, then a 26px column held permanently for a control that is
+ * invisible until you hover it, then the button's own padding. It has about 210px
+ * now, and the delete control is out of the text's way entirely.
+ */
+.conversation-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: none;
+  text-align: left;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.35;
+}
+/*
+ * The head line: the latest turn's status on the left, the date on the right.
+ *
+ * The right padding is the delete control's corner, held whether or not the
+ * pointer is in the row. Holding it costs the date 22px of the one line it is on;
+ * the alternative was a destructive control landing on top of the date the moment
+ * a reader hovers the row, or the date sliding sideways as they do.
+ *
+ * IT WRAPS, AND THAT IS ARITHMETIC RATHER THAN CAUTION. A row can carry two pills
+ * now -- the status, and "Truncated" when the turn stopped early -- and both are
+ * `flex: none` with `white-space: nowrap`, because a status word broken across
+ * two lines is not a status. At the 264px rail the pair and the date come to
+ * about 187px inside the 196px the line has, which fits; at the 220px rail below
+ * 1180px the line has about 152px and they do not. Without a wrap the overflow
+ * has nowhere to go and the date is pushed under the delete control, which is
+ * the clipping this rail has had fixed twice by moving something 2px. The date
+ * takes a second line there instead, still pushed right by the `margin-left:
+ * auto` below. Asserted in rail-run-summary.test.ts against those widths.
+ */
+.conversation-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 22px;
+}
+/*
+ * The status of the conversation's most recent answered turn.
+ *
+ * THE RECIPE IS NOT HERE ANY MORE. It is `.ast-pill` in astrolabe-tokens.css,
+ * which §2 makes the app's only status chip: 1px border, tint, 4px radius,
+ * 11px/500, and a word rather than a colour. The rail used to restate that rule
+ * in its own hand, against the retired db- washes, which is how one screen ends
+ * up a shade off the rest after somebody restyles the other.
+ *
+ * What is left is the three properties a 264px column needs and a chip in
+ * general does not. `flex: none` and `nowrap` because a status word squeezed or
+ * broken across two lines is not a status, and the head line wraps instead --
+ * see `.conversation-item-head`. `capitalize` because the pill prints the
+ * store's own word rather than a label of the rail's choosing, so a status this
+ * client has not been taught still reads as itself.
+ *
+ * Which family a word takes is `railStatusTone`, and an absent run takes none of
+ * them: see rail-run-summary.ts for why a conversation with no known turn draws
+ * no pill rather than a neutral one.
+ */
+.conversation-status {
+  flex: none;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+/* Long titles are clamped so the rail stays scannable. The clamp counts lines and
+   cannot break a long unbroken token, so a title naming a fully qualified table
+   ran out of the rail sideways until `overflow-wrap` let it break anywhere. */
+.conversation-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* Who asked, how long the turn took, and how they rated it: three small facts on
+   one line, so none of them costs the rail a row of height. Wraps rather than
+   overflowing, because at 220px a long duration and a rating together do not
+   always fit beside the watermark. */
+.conversation-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+/* 12px, the handoff's meta size, rather than 11px: the row's own text is 13px and
+   an 11px date under it read as a footnote on a footnote. */
+/* The face is `.ast-num` on the markup now: §3 puts every figure in a column in
+   DM Mono, and the `font-variant-numeric` this used to carry was inert on DM Sans,
+   which declares no `tnum` feature. */
+.conversation-age {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+/* Pushed right rather than relying on the head line's `space-between`, which only
+   separates two children: a row with no status to report has the date as the head
+   line's only child, and that date would sit on the left while every other row's
+   sat on the right. */
+.conversation-item-head .conversation-age {
+  margin-left: auto;
+}
+/* Duration's face is `.ast-num` on the markup; the `font-variant-numeric` this
+   carried switched nothing on in DM Sans and this rule had nothing else to do. */
+/* The rating the reader gave that turn, printed with its scale. Amber fills the
+   glyph and ink outlines it, which is what makes a 1.90:1 fill readable at this
+   size; the number beside it is body text and does not borrow the fill. The same
+   treatment the run card gives it, so one rating reads one way on both screens. */
+.conversation-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--foreground);
+}
+.conversation-rating svg {
+  width: 12px;
+  height: 12px;
+  fill: var(--db-amber);
+  stroke: var(--db-ink);
+  stroke-width: 1.5;
+}
+/* Hover and selected are the run card's two states, so a row picked here and a run
+   picked there look picked in the same way: the border goes blue in both, over the
+   row wash on hover and the selected tint when it is the open conversation. Neither
+   lifts off the page -- the soft drop shadows that used to separate a row from the
+   rail are gone with every other shadow on a static panel. */
+.conversation-row:hover {
+  border-color: var(--primary);
+  background: var(--db-row-hover);
+}
+/* Selected is the blue border on the faint blue ground. Blue because a selected row
+   is the app's own "this is the one you picked", which is the same statement a
+   pressed tab makes. The tint is pitched so muted text still clears AA on it. */
+.conversation-row.active {
+  border-color: var(--primary);
+  background: var(--db-selected-tint);
+}
+.conversation-row.active .conversation-title {
+  font-weight: 600;
+}
+.conversation-item:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+/* The watermark: who asked, as initials.
+   Deliberately the quietest thing in the row. It carries no colour of its own,
+   because the blue edge marker already means "this row is selected" here and amber
+   means evaluation: a third mark competing with those would make the rail harder to
+   scan, not easier.
+   Quiet comes from size and weight rather than from low contrast. It is the neutral
+   chip the handoff gives every set of initials, and it takes the chip's own text
+   colour rather than the app's secondary grey, which is only 4.23:1 there:
+   #445461 on #E8ECF0 is 6.58:1. */
+.conversation-owner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--db-chip);
+  border: 1px solid var(--db-line);
+  color: var(--db-grey-blue);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  /* The address is on `title`, so the cursor should say there is something to read. */
+  cursor: help;
+}
+.conversation-row.active .conversation-owner {
+  /* On the selected row's wash a grey circle looks like a rendering fault, so it
+     goes white and picks up the row's border. 7.82:1 on this background. */
+  background: var(--background);
+  border-color: var(--db-chip);
+}
+
+/* The scope note beside "RECENT", when the rail is carrying more than the signed-in
+   user. Neutral and not uppercase, so it reads as a qualifier on the eyebrow rather
+   than as a second eyebrow competing with it. 5.02:1 on the rail. */
+.section-label-scope {
+  color: var(--db-slate);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+/* Only ever rendered when the rail holds more than one person, which today means a
+   deployment that has deliberately turned sharing on. It sits between the eyebrow and
+   the first row, so it has to be quieter than both: no border, no fill, and the same
+   neutral as the watermark it filters by. */
+/* The rail's people filter.
+ *
+ * Wraps rather than scrolling sideways, and is capped at three rows so a
+ * deployment with twenty askers cannot push the conversations this control
+ * exists to filter below the fold. Past the cap it scrolls within itself, which
+ * costs the rail a fixed amount of height whatever the number of people.
+ *
+ * Three rows EXACTLY, and the number is derived rather than estimated. A chip
+ * below measures 26px: 3px of padding twice, a 1px border twice, and an 18px
+ * line box from 12px type at 1.5. Three of them plus the two 4px row gaps is 86.
+ *
+ * It was 84 under a comment saying "roughly three rows", and roughly was two
+ * pixels short: every rail carrying enough people to wrap showed a permanent
+ * scrollbar and a two-pixel sliver of a fourth row under the third. If the chip's
+ * padding, border or type size moves, this number moves with it. */
+.conversation-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 8px;
+  max-height: 86px;
+  overflow-y: auto;
+  color: var(--db-slate);
+}
+
+.conversation-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  /* Unpressed is the outline treatment the handoff gives every chip: the strong
+     rung, because a hairline does not describe the edge of something you press. */
+  border: 1px solid var(--db-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--db-slate);
+  font-size: 12px;
+  /* 500 in both states, deliberately. The handoff gives the pressed chip 500 and
+     says nothing about the unpressed one, and this was 500 going to 600: a weight
+     change is a width change, so pressing a chip re-measured its own text and
+     nudged every chip after it along the wrapped row. Fixed geometry between states
+     is a spec rule (§5.5) and weight is part of the geometry. */
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  /* Only the colours move on toggle. Nothing that changes the chip's size, so
+     pressing one cannot reflow the row under the pointer and put a different
+     chip where the last click landed. */
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+/* The wash every outline control gets under the pointer. */
+.conversation-filter-chip:hover {
+  background: var(--db-hover-tint);
+}
+
+/*
+ * The pressed state: the neutral chip fill, which is what the handoff and the
+ * mockup both give it.
+ *
+ * It was the action colour, white on #2272B4, on the argument that pressed is an
+ * active state and blue owns those. Two things wrong with that here. The rail
+ * already spends blue on the selected conversation's left rule, and a row of solid
+ * blue chips above it competes with the one blue mark that says which conversation
+ * you are reading. And the chips are a filter, not a destination: what they report
+ * is which subset is on screen, which is the same class of statement as the
+ * segmented control's active segment, and that is the neutral fill everywhere else
+ * in the app.
+ *
+ * The border stays 1px and goes to the fill colour rather than to none, so the box
+ * does not change size when it lights up. #11171C on #E8ECF0 is 14.6:1.
+ */
+.conversation-filter-chip[aria-pressed='true'] {
+  border-color: var(--db-chip);
+  background: var(--db-chip);
+  color: var(--db-ink-deep);
+}
+
+.conversation-filter-chip:focus-visible {
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: 1px;
+}
+
+/* Tabular so a chip does not change width between 9 and 10, which would
+   reflow the whole wrapped block on a refetch. */
+.conversation-filter-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.conversation-filter-chip[aria-pressed='true'] .conversation-filter-count {
+  color: inherit;
+}
+
+.conversation-filter-initials {
+  letter-spacing: 0.02em;
+}
+
+/* Destructive, so it stays out of the way until the row is under the pointer or the
+   keyboard. It is never removed from the layout or the tab order (only faded), so it
+   can still be reached by keyboard, and it is always visible where hover does not
+   exist. */
+.conversation-delete {
+  /* In the card's top-right corner, over the strip the head line holds for it, so
+     it costs the title and the meta line nothing at all. */
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  /* 4px, down from 6px, which was neither of the two. A 26px icon button is a
+     control, and controls are the control radius. */
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.conversation-delete svg {
+  width: 14px;
+  height: 14px;
+}
+.conversation-row:hover .conversation-delete,
+.conversation-delete:focus-visible {
+  opacity: 1;
+}
+.conversation-delete:hover {
+  /* The wash rather than the line rung: red measures 4.99:1 on #FFF5F7 and only
+     3.84:1 on #FBD0D8, and the pair is meant to be used as wash-behind-line. The
+     rail has no standing red at all, so this is the only red in it until a
+     confirmation opens, which is what makes it register. */
+  background: var(--db-red-wash);
+  color: var(--db-red-600);
+}
+.conversation-delete:disabled {
+  cursor: wait;
+  opacity: 0;
+}
+@media (hover: none) {
+  /* No hover to reveal it, so it is simply always there. */
+  .conversation-delete {
+    opacity: 1;
+  }
+}
+
+/* The confirmation replaces the row it belongs to, rather than floating over the
+   page. The entry being deleted is the thing the question is about, so putting the
+   question where the entry was keeps them from being read separately, and a rail
+   this dense has no room for a popover that would cover its neighbours. */
+.conversation-row.confirming {
+  display: block;
+  background: var(--db-red-wash);
+  border-color: var(--db-red-line);
+  padding: 10px;
+}
+.conversation-confirm-question {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.conversation-confirm-detail {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.conversation-confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 9px;
+}
+.conversation-confirm-actions button {
+  flex: 1;
+  /* Buttons, so the control radius, like every other button in the app. */
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--db-line-strong);
+}
+.conversation-confirm-cancel {
+  background: var(--background);
+  color: var(--foreground);
+}
+.conversation-confirm-cancel:hover {
+  border-color: var(--db-blue-600);
+  background: var(--db-hover-tint);
+}
+/* The only red button in the app, and it is the one that destroys something. White
+   on #C82D4C is 5.33:1, and 8.19:1 on the hover rung under it. Every other filled
+   button in the rail is blue, so this one is the single thing that does not look
+   like the rest of the interface, which is the entire point of it. */
+.conversation-confirm-delete {
+  background: var(--db-red-600);
+  border-color: var(--db-red-600);
+  color: #ffffff;
+}
+.conversation-confirm-delete:hover {
+  background: var(--db-red-700);
+  border-color: var(--db-red-700);
+}
+.conversation-confirm-actions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.conversation-empty {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+/* The rail ends with the conversation list. It used to end with an "Open
+   Benchmark Lab" link pinned below it, in a gold icon chip -- the one exception
+   to "icon chips are neutral", on the argument that its destination was
+   evaluation. The link is gone, so the exception is too, and gold is once again
+   only ever a filled mass or a rule in this app. */

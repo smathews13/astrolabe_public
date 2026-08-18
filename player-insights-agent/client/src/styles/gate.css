@@ -1,0 +1,328 @@
+/* ---------------------------------------------------------------------------
+   The access gate: the one genuinely modal surface in the app, and the first
+   thing a new reader ever sees.
+
+   Restyled to the handoff's geometry -- 640px panel, 8px radius, a 4px blue top
+   rule, 28/32px padding, three stacked two-line buttons -- with the one
+   translucency the revamp keeps. A modal scrim is translucent by definition: it
+   is showing you the page you are being held back from.
+   --------------------------------------------------------------------------- */
+
+.access-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  /* #11171C is --db-ink-deep, and the scrim is the darkest fill in the app held
+     at half strength. Written as a mix rather than as `rgba(17, 23, 28, 0.5)` so
+     the one translucent surface in the app is still recognisably made of a
+     palette colour. Premultiplied against `transparent`, this is the same paint. */
+  background: color-mix(in oklab, var(--db-ink-deep) 50%, transparent);
+  overflow-y: auto;
+}
+
+/* Focus starts here rather than on a button, so a reader meets the heading and
+   the paragraph about what a check does and does not establish before they meet
+   three consequential choices. It is `tabIndex=-1`, so it is a focus target and
+   never a Tab stop. */
+.access-gate:focus {
+  outline: none;
+}
+
+.access-gate-panel {
+  width: 640px;
+  max-width: 100%;
+  background: var(--background);
+  border: 1px solid var(--db-line);
+  /* The same signature the header and the answer card wear, so the gate is
+     recognisably this app rather than a browser dialog. */
+  border-top: 4px solid var(--db-blue-600);
+  border-radius: var(--radius-md);
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--db-ink);
+  /* Kept, unlike every other shadow in the app: this is a Modal, and a modal is
+     the one thing DuBois says may float. The same ink as the scrim behind it, at
+     22%, so the panel and the ground it floats over are one colour decision. */
+  box-shadow: 0 18px 48px color-mix(in oklab, var(--db-ink-deep) 22%, transparent);
+}
+
+.access-gate-panel h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--db-ink);
+}
+
+/* Body copy rather than secondary grey: this paragraph is the substance of the
+   screen, not a caption under it. */
+.access-gate-panel > p {
+  margin: 0;
+  color: var(--db-body);
+}
+
+.access-gate-actions {
+  display: grid;
+  gap: 8px;
+}
+
+/* Each option carries its own consequence, because the difference between them
+   is the sentence underneath rather than the label on top.
+
+   `:not(.refresh-button)` because the re-check is the app's shared Refresh
+   control once a check has failed, and it is not a door. Without the exclusion
+   every rule here would apply to it -- the 1px border, the white fill, the
+   left-aligned two-row grid -- and this file loads after page-shell.css, so the
+   door would win and the control would be filled blue everywhere in the app
+   except the one screen where it replaced a bespoke button. */
+.access-gate-actions button:not(.refresh-button) {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  padding: 10px 16px;
+  border: 1px solid var(--db-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--db-ink-deep);
+  cursor: pointer;
+}
+
+.access-gate-actions button:not(.refresh-button) span {
+  font-weight: 400;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+/* The re-check, once the check has failed: the shared control and the sentence
+   that says what pressing it does, on one row. The sentence keeps the doors'
+   voice and size so the row still belongs to the group above it. */
+.access-gate-recheck {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--db-line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.access-gate-recheck > span {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.access-gate-action-label {
+  font-weight: 700 !important;
+  font-size: var(--text-base) !important;
+  color: inherit !important;
+}
+
+.access-gate-actions button:not(.refresh-button):hover:not(:disabled) {
+  border-color: var(--db-blue-600);
+  background: var(--db-hover-tint);
+}
+
+.access-gate-actions button:not(.refresh-button):disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* The recommended door: a filled button, so it is the action colour. Which of
+   the three wears this changes once a check has failed -- re-running a probe
+   that just failed for a missing grant is not what that reader should be pushed
+   towards -- so it is a class the markup moves rather than a position. */
+.access-gate-primary {
+  border-color: var(--primary) !important;
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Was white at 86%, which on the old black fill was still 15:1 and on the new blue
+   would be 4.20:1 — a fail at 12px. Solid white is 5.08:1. The line is
+   subordinate to the label above it by weight and size, which is enough. */
+.access-gate-primary span {
+  color: var(--primary-foreground) !important;
+}
+
+/* Visibly the lesser door. Still a real one. An option nobody can find is not
+   a choice, it is a maze -- and an option that looks exactly as endorsed as the
+   fallback beside it is not a hierarchy. */
+.access-gate-skip {
+  border-style: dashed !important;
+}
+
+.access-gate-result {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+/* The refusal, and one of the few places left that is allowed to be red. The gate
+   itself is ordinary chrome (a question the app asks everyone), so only the answer
+   that says "no" is coloured. */
+.access-gate-result-bad {
+  background: var(--db-red-wash);
+  border: 1px solid var(--db-red-line);
+  color: var(--db-ink);
+}
+
+.access-gate-result p {
+  margin: 0;
+  color: var(--db-body);
+}
+
+/* The classification of the failure, which is the sentence that decides who the
+   reader has to go and talk to. Red as type, on the red wash: 4.99:1. */
+.access-gate-verdict {
+  font-weight: 700;
+  color: var(--db-red-600) !important;
+}
+
+.access-gate-result ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  /* Restated because the app's reset clears it, and with three refusals on
+     screen the boundary between one object's fix and the next matters. */
+  list-style: disc outside;
+}
+
+/* Identifiers, privileges and scopes read as values rather than as prose: the
+   difference between `sql` the scope and sql the word is the whole of one of
+   these sentences. */
+.access-gate-result code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--db-code-bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.access-gate-detail {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+}
+
+/* Where to look, in body copy. The red above it is the classification; a second
+   red line here would divide the reader's attention between two of them. */
+.access-gate-layer {
+  font-weight: 500;
+  color: var(--db-body);
+}
+
+/* The way out, inside the failure rather than below it. Checking is the default
+   now, so a reader without the grant meets a refusal first, and the working
+   alternative has to be part of what they are reading, not something they have
+   to go looking for underneath it. */
+.access-gate-fallback {
+  margin: 4px 0 0 !important;
+  padding-top: 10px;
+  /* Not the red line colour: this sits on the red wash, and #FBD0D8 over #FFF5F7 is
+     a few steps per channel. A rule nobody can see does not separate the way out
+     from the refusal above it. The red rung at 45% keeps the divider in the same
+     family as the panel while actually reading as a division. */
+  border-top: 1px solid color-mix(in oklab, var(--db-red-600) 45%, transparent);
+}
+
+/* The limits of the check sit beside the result rather than inside it: they are
+   not a failure, and colouring them like one would teach the reader to skip the
+   two things here that cannot fail loudly. */
+.access-gate-result-neutral {
+  background: var(--db-amber-wash);
+  border: 1px solid var(--db-amber-line);
+  color: var(--db-ink);
+}
+
+/* Collapsed, and one line until somebody asks. Every caveat inside it is worth
+   having and none of them is what a reader at a door needs first: as an open
+   panel this was two or three bullets, each with a three-line explanation under
+   it, standing between the reader and the way in. The summary keeps the amber so
+   it still reads as a qualifier on the result rather than as another refusal. */
+.access-gate-limits > summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--db-ink);
+}
+
+/* Named, and nothing more. There is no grant to offer for a check that did not
+   run, so this line is the tables and the one word that keeps them out of the
+   refusals: unknown, not refused. */
+.access-gate-unchecked {
+  font-weight: 500;
+}
+
+.access-gate-impact {
+  font-weight: 500;
+}
+
+/* The statement is meant to be selected and pasted, so it keeps its line breaks
+   and does not wrap mid-identifier. */
+.access-gate-remedy {
+  display: grid;
+  gap: 4px;
+}
+
+.access-gate-remedy-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--muted-foreground) !important;
+}
+
+/* The one line the statement above cannot carry. Rendered on the two remedies
+   here whose statement is misleading on its own: a SCIM patch whose placeholder
+   id invites an email address, and a warehouse lookup whose two outcomes mean
+   opposite things. Left at body weight and inline, not folded: this panel is the
+   only thing between a refused reader and the way out, and a disclosure here is
+   something nobody opens. */
+.access-gate-remedy-guidance {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.access-gate-remedy pre,
+.access-gate-raw pre {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--db-code-bg);
+  color: var(--db-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.access-gate-raw {
+  font-size: var(--text-sm);
+}
+
+.access-gate-raw summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+}
+
+.access-gate-raw pre {
+  margin-top: 6px;
+  /* The classification above it can be checked against this, so it is readable
+     text rather than a command to lift out whole. */
+  user-select: text;
+  color: var(--db-body);
+}

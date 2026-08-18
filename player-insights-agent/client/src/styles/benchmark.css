@@ -1,0 +1,481 @@
+/*
+ * The metric tile row.
+ *
+ * Shared vocabulary: the Benchmark Lab's five scores and the Run Explorer's five
+ * measurements are the same tile, and there is one recipe rather than two that
+ * drift. It lives here because this is the file the row was written in.
+ *
+ * auto-fit rather than a column count, because the two callers render it at two
+ * widths -- the Lab has the page, the Explorer has what is left of it beside a
+ * 340px list -- and both hold five tiles. As many as fit, equal, wrapping when
+ * they do not. Naming a breakpoint here would need a third one the day a sixth
+ * tile lands.
+ */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 12px;
+}
+.summary-grid [data-slot='card'] {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  padding: 0;
+}
+.summary-grid [data-slot='card-content'] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+}
+.summary-grid span {
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+}
+/* Tabular because these refetch: a suite that goes from 9 to 10 cases must not
+   widen its own tile and reflow the row. The trace panel's tiles have had this
+   since they landed; the benchmark's never did. */
+/* Tabular comes from `.ast-num` in the markup: the tiles sit in a row a reader
+   compares across, and `font-variant-numeric` on DM Sans switches nothing on. */
+.summary-grid strong {
+  font-size: var(--text-kpi);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+/* The caption under the value. It used to be green, which is the colour for
+   "reachable, or saved" and read as a verdict on the number above it -- a
+   coverage line saying two cases were never scored is not good news. */
+.summary-grid small {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* A value that is a word rather than a number ("Not rated", "Not reported")
+   keeps the tile's size and drops to the secondary weight of ink, so a run
+   nobody has rated does not read as a measured result. */
+.summary-grid strong.tile-absent {
+  color: var(--muted-foreground);
+}
+/* The in/out split on the token tile: mono, because they are two metred values
+   to be compared rather than a sentence. */
+.summary-grid small.tile-mono {
+  font-family: var(--font-mono);
+}
+/* The way to supply what the tile says is missing. Blue, because it is an
+   action, and 12px so it does not compete with the label above it. */
+.summary-grid .tile-link {
+  margin-top: 2px;
+  color: var(--primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+/*
+ * Amber's anchor: the one evaluation tile in the row, tied to the amber stars in
+ * the results table below it. §9 names exactly these three places and no others:
+ * "Amber marks evaluation only: thick tile rule, column underline, star fill."
+ *
+ * THE HUE IS THE ASTROLABE ONE NOW, and this is the change worth stating. It was
+ * DuBois #FFAB00 on #FFF9EB, and #FFAB00 is a bright gold that reads as the
+ * orange this palette does not have; §2's amber family is #8A6A38 text on
+ * #F9F6EF with a #E0D3B8 hairline. The saturated rung rather than the hairline
+ * one, because all three of §9's uses are filled masses -- a 4px rule, a 3px
+ * underline, a 13px glyph -- and #E0D3B8 at those sizes is not visible.
+ *
+ * It is also a real improvement to the reason the rule was 4px. #FFAB00 is 1.90:1
+ * on white, which is why it could only ever be a mass; #8A6A38 is 4.83:1, so the
+ * marks read at the weights the design asks for rather than despite them.
+ *
+ * The label and the caption take the deep rung, which is what evaluation uses
+ * when it has to be type: #7A5E32 is 5.53:1 on this wash. The value itself stays
+ * ink. Amber is never the type.
+ */
+.summary-grid [data-slot='card'].benchmark-score {
+  border-top: 4px solid var(--ast-warn-text);
+  background: var(--ast-warn-fill);
+}
+.summary-grid [data-slot='card'].benchmark-score span,
+.summary-grid [data-slot='card'].benchmark-score small {
+  color: var(--ast-warn-deep);
+}
+.summary-grid [data-slot='card'].benchmark-score span {
+  font-weight: 500;
+}
+/* Same two rungs as everywhere else: a hairline, an 8px radius, no shadow.
+   AppKit's Card ships `shadow-sm` and `rounded-xl`, both as utilities, so a plain
+   rule outranks them. */
+.benchmark-lab [data-slot='card'] {
+  box-shadow: none;
+  border-radius: var(--radius-md);
+}
+.benchmark-lab .page-heading h2 {
+  font-size: var(--text-h-page);
+  letter-spacing: -0.01em;
+  margin: 0 0 2px;
+}
+
+/*
+ * The qualification ledger.
+ *
+ * This screen used to open with up to six separate alerts, one per qualification,
+ * and on a bad run a reader met a wall of them before a single number. Each one
+ * exists because it corrects a specific misreading, so none of them could be
+ * dropped; what could change was the shape. They are one bordered ledger now,
+ * headed with the reason to read it, and every qualification the summary produces
+ * is still a row of it. Prominence and grouping, never whether something is said.
+ *
+ * The strong border rather than the hairline, because this is the one block on the
+ * page that is not a measurement and has to read as a different kind of thing from
+ * the tiles below it.
+ */
+.bench-ledger {
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.bench-ledger-head {
+  margin: 0;
+  padding: 10px 16px;
+  background: var(--ast-fill-band);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+.bench-ledger-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bench-ledger-row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+.bench-ledger-row svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  color: var(--db-slate-icon);
+}
+.bench-ledger-row p {
+  margin: 0;
+  color: var(--ast-text-long);
+}
+.bench-ledger-row strong {
+  font-weight: 500;
+  color: var(--foreground);
+}
+/* The two rows that say the run did not do what its numbers imply. They keep the
+   alert's own treatment, because losing the tone was the one way this regrouping
+   could have cost a reader something. */
+.bench-ledger-row.tone-danger {
+  background: var(--ast-neg-fill);
+}
+.bench-ledger-row.tone-danger svg,
+.bench-ledger-row.tone-danger strong {
+  color: var(--destructive);
+}
+
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.table-scroll [data-slot='table'] {
+  min-width: 860px;
+}
+.table-scroll thead th {
+  height: auto;
+  padding: 6px 16px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.table-scroll tbody td {
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+}
+/* Counts and durations are read down the column, so they are tabular, and they are
+   right-aligned to the digit rather than to the word.
+
+   The family is set here rather than as `.ast-num` on each cell: every element
+   these two classes are on is a figure, and a class per cell across a table that
+   pages is a place for one to be missed. `font-variant-numeric` alone did nothing
+   at all, DM Sans having no `tnum` feature, so a column of durations jitters by
+   most of a digit as the numbers change. */
+.bench-num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.bench-when {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * A recorded run, as a row you can reach from the keyboard.
+ *
+ * The row was a `<tr onClick>`: clickable with a mouse and unreachable without
+ * one, on the control that drives every figure above it. The cell that names the
+ * run holds a real button now, so the row is in the tab order and answers Enter
+ * and Space, and the row keeps its click for the rest of its width. The button
+ * carries `aria-pressed`, because selecting a run is a state and not a
+ * navigation.
+ */
+.bench-run-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.bench-run-open:hover {
+  color: var(--primary);
+}
+/* Selected is the blue left edge on a faint blue ground, drawn as an inset shadow
+   so that picking a row cannot move the row's contents by a border's width. */
+.bench-run-row.active {
+  background: var(--db-selected-tint);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.bench-run-row.active .bench-run-open {
+  color: var(--primary);
+}
+/*
+ * LAYOUT ONLY. Every verdict on this page is `.ast-pill` and one of its families,
+ * chosen in BenchmarkLab.tsx off the tone the summary module reports. What is
+ * left is the extra vertical padding a pill needs inside a table row, where it
+ * sits against 13px cells rather than against a heading.
+ *
+ * The three tone rules that were here are gone rather than repointed: they were
+ * the DuBois green, red and amber, and this lab draws its verdicts beside the
+ * Run Explorer's, which are the astrolabe ones.
+ */
+.bench-pill {
+  padding: 2px 8px;
+}
+/* The outcome breakdown, under the tile row rather than inside a tile's caption,
+   where it competed with the denominator for the same line. 12px muted, the same
+   rung the Run Explorer's reconciliation note uses under its own tiles. */
+.bench-outcomes {
+  margin: -4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+/*
+ * Per-case results: the run's own record of each case.
+ *
+ * The panel holds no case list of its own -- every row is what the run reported,
+ * because pairing server results with client-held questions is how the six-row
+ * table came to disagree with the tile above it. The question leads, the case id
+ * sits under it in mono as an identifier rather than as prose, and the runner's
+ * own sentence about the case follows: that sentence is where a refusal says it
+ * was not counted as a failure, which a pill cannot say.
+ */
+.bench-cases [data-slot='table'] {
+  min-width: 640px;
+}
+.bench-cases .bench-case-question,
+.bench-cases .bench-case-id,
+.bench-cases .bench-case-note {
+  display: block;
+}
+.bench-cases .bench-case-question {
+  font-weight: 500;
+}
+.bench-cases .bench-case-id {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.bench-cases .bench-case-note {
+  margin-top: 4px;
+  max-width: 620px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.bench-percase [data-slot='empty'] {
+  gap: 6px;
+  padding: 24px;
+}
+.bench-percase [data-slot='empty-header'] {
+  gap: 6px;
+}
+.bench-percase [data-slot='empty-title'] {
+  font-size: var(--text-h-sub);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.bench-percase [data-slot='empty-description'] {
+  max-width: 380px;
+  font-size: var(--text-sm);
+}
+/* The Rating column is the table's evaluation column, so its header wears a thick amber
+   underline: a rule, never a tint on the caps above it, because the caps are the
+   column's name and not a verdict. Rating is the last column on every table in the
+   app that has one.
+   `:not(.bench-cases)` because the per-case table's last column is a duration, and
+   amber on it would say that a timing had been evaluated. */
+.table-scroll:not(.bench-cases) [data-slot='table'] thead th:last-child {
+  border-bottom: 3px solid var(--ast-warn-text);
+}
+.stars {
+  /* The amber fill belongs to the star glyph; the rating itself is body text on a white
+     card, so it must not borrow the fill. Lucide draws its stroke from currentColor,
+     so an ink `color` here outlines the amber the way the icon's own chip outlines
+     its glyph.
+
+     The figure beside the stars is `.ast-num` in the markup. This rule asked for
+     tabular figures with `font-variant-numeric` on DM Sans, which declares no
+     `tnum` feature, so a rating repeated down a column never lined up. */
+  color: var(--foreground);
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+/* The ink outline is 1.5px and deliberate: it is the treatment the design gives the
+   glyph, and it is what stops five filled stars reading as one bar. */
+.stars svg {
+  width: 13px;
+  height: 13px;
+  fill: var(--ast-warn-text);
+  stroke: var(--ast-text);
+  stroke-width: 1.5;
+}
+.comparison-flow {
+  display: flex;
+  align-items: center;
+}
+.comparison-flow span {
+  border: 1px solid var(--border);
+  /* 8px, up from 7px: a bordered box with real padding in it is a panel, and one
+     pixel is not a distinction worth a third radius. */
+  border-radius: var(--radius-md);
+  padding: 8px;
+  font-size: var(--ast-fs-11);
+}
+.comparison-flow i {
+  flex: 1;
+  height: 2px;
+  background: var(--chart-1);
+}
+/* Slow used to be amber, which read as a dimmer evaluation colour right under the
+   score card and muddied what amber means. The outlier separates by going darker and
+   heavier than the series instead of by hue. That rule survives the revamp unchanged:
+   the palette now has a hue to spare, and it still must not be spent here, because a
+   second colour in this strip would be read as a second meaning. */
+.comparison-flow i.slow {
+  background: var(--ast-text);
+  height: 5px;
+}
+
+/*
+ * The held-out evaluation: the full scorer set, published rather than live.
+ *
+ * The whole section has to read as a DIFFERENT KIND of thing from the run above
+ * it, because the one mistake available on this screen is comparing a figure
+ * here with a figure there. They are over different populations, measured on
+ * different days, by different means. Separation is carried structurally -- its
+ * own card, its own heading, its own provenance ledger -- rather than by a tint,
+ * because a tint is the first thing lost to a theme change or a screenshot.
+ */
+.bench-heldout [data-slot='table'] {
+  min-width: 900px;
+}
+.bench-heldout [data-slot='alert'] {
+  margin-bottom: 12px;
+}
+.bench-heldout .bench-ledger {
+  margin-bottom: 12px;
+}
+.bench-scorers .bench-scorer-name,
+.bench-scorers .bench-case-id,
+.bench-scorers .bench-scorer-meaning,
+.bench-scorers .bench-case-note {
+  display: block;
+}
+.bench-scorers .bench-scorer-name {
+  font-weight: 500;
+}
+.bench-scorers .bench-case-id {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* The meaning is body text and the coverage under it is the caption, the same
+   two rungs the per-case table uses for a question and the runner's note about
+   it. Capped in width for the same reason: a sentence that runs the full width
+   of a wide table is not read. */
+.bench-scorers .bench-scorer-meaning {
+  max-width: 560px;
+}
+.bench-scorers .bench-case-note {
+  margin-top: 4px;
+  max-width: 560px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+/* THE THREE SCORER-KIND PILLS USED TO BE PAINTED HERE AND THE RULES ARE GONE.
+   Nothing emits `tone-deterministic`, `tone-judged` or `tone-operational` any
+   more: the kind pill is `astPill('neutral-outline', ...)` from BenchmarkLab.tsx,
+   which is the one status recipe, and these three were the last of this page's
+   own. They were also the last three DuBois status washes in this file, in
+   #B1ECC5 / #F3FCF6 / #277C43 and #F8D4A5 / #FFF9EB / #BE501E, which are a
+   brighter green and an orange-leaning amber than the palette has anywhere.
+
+   Left in place they would have kept painting the moment somebody reintroduced
+   one of those class names, which is how a converged recipe comes apart: not by
+   being changed, but by an old rule still being there to win. */
+/* A scorer that cannot report. Muted rather than red: it is not a failure and
+   must not be read as one. The row stays fully legible, because the reason in
+   its last cell is the most informative sentence in the table -- it is the one
+   that says a governed-access property has NOT been established here. */
+.bench-scorer-blocked .bench-scorer-name {
+  color: var(--muted-foreground);
+}
+.bench-scorer-blocked .bench-num {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* -------------------------------------------------------------------------
+   The unreviewed-label disclosure.
+
+   Given the weight the page otherwise reserves for a failed run, because that
+   is the weight it warrants: every judged figure below it was graded against a
+   standard nobody with domain knowledge has checked. Sized so it cannot be
+   mistaken for the neutral provenance notes further down, and placed above the
+   figures so it is read before them rather than after.
+   ------------------------------------------------------------------------- */
+.bench-labels-unreviewed {
+  margin-bottom: 0.75rem;
+}
+
+.bench-labels-unreviewed [data-slot='alert-title'] {
+  /* 16px. 0.95rem is 15.2, which is not a rung and is not a size anybody chose
+     twice; the rung above it is what an alert title takes elsewhere. */
+  font-size: var(--ast-fs-16);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.bench-labels-unreviewed p {
+  margin: 0.35rem 0 0;
+}
+
+/* The split between labels a reviewer can check and labels they can only
+   agree with. Held slightly back from the consequence above it: it qualifies
+   the warning rather than restating it. */
+.bench-label-sources {
+  opacity: 0.9;
+}
+
+/* On the row, at the number. Carries the same warning colour as the banner so
+   a reader scanning the table meets it without having scrolled back up. */
+.bench-unreviewed-note {
+  color: var(--destructive);
+  font-weight: 500;
+}

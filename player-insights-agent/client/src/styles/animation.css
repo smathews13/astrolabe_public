@@ -1,0 +1,61 @@
+/*
+ * What is left of the retired loading animation: the agent mark's paint.
+ *
+ * THE CONTROLLER SCENE IS GONE. `loading-animation.md`'s first line retires it
+ * -- "the controller→database→agent scene is replaced by the constellation
+ * loaders in loading-suite.md" -- and what stood here was that scene: eight
+ * keyframes, a 208px dot track, an opaque plate the colour of the chip that hid
+ * a blue-to-orange handover behind a database, and a reduced-motion block that
+ * placed every dot by hand because stopping the animation stacked them all at
+ * the left edge. It was careful work about a picture the design no longer has.
+ * The replacement is astrolabe-loaders.css.
+ *
+ * THE DOTS WENT WITH IT, AND THEY ARE NOT WAITING TO BE RECOLOURED. Two audits
+ * across branches have now read a copy of this file from before that deletion,
+ * counted nine orange fills, and reported six of them -- the two colour stops in
+ * each of `pia-dot-run` and `pia-dot-run-sm`, the two reduced-motion stills, and
+ * the d-pad's east face -- as a track still needing §2's #6FAEDD. There is no
+ * track. Every one of those rules went when the scene did, and the surface that
+ * replaced them already draws at that value: astrolabe-loaders.css strokes and
+ * fills the constellations from --ast-blue-on-dark, which is #6FAEDD. What is
+ * below is the robot and nothing else.
+ *
+ * THE FOUR RULES BELOW ARE NOT PART OF THAT SCENE and are why this file still
+ * exists. They paint `PiaRobotMark`, which is still seated in `AnswerCard.tsx`,
+ * `PlanCard.tsx` and `RunExplorer.tsx`. Those three are other lanes' files in
+ * this rebuild, so the robot is retired HERE -- the Ask home's hero chip and the
+ * working loaders draw the astrolabe mark now -- and survives there until the
+ * lanes that own them convert their own seats. Deleting these rules today would
+ * leave three components rendering an unpainted drawing.
+ *
+ * The mark no longer moves anywhere. The antenna pulse and the eye blink were
+ * scoped under `.pia-anim`, which only the retired strip carried, so both were
+ * unreachable the moment it went. A mark that signs a finished answer has never
+ * been entitled to move and now cannot.
+ *
+ * WHEN THE LAST SEAT CONVERTS, THIS FILE GOES, and with it the last of the
+ * orange: `--db-orange` is declared for the robot's body and its antenna and for
+ * nothing else on this surface. §2 has no orange in it.
+ */
+
+.pia-robot-head {
+  fill: var(--db-orange);
+}
+
+.pia-antenna {
+  fill: var(--db-orange);
+}
+
+/* The eyes and the mouth are holes rather than shapes: the fill reads as the
+   surface behind the mark, and on the white card and the pale plan wash the mark
+   sits on, the difference between this and the surface is under a percent of
+   luminance -- so they read as cut out of the head rather than as three pale
+   rectangles painted onto it. Ice rather than the oat it was, because §2 retires
+   oat app-wide. */
+.pia-cutout {
+  fill: var(--ast-ice);
+}
+
+.pia-eyes {
+  transform-origin: 36px 31px;
+}

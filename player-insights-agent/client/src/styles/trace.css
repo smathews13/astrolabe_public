@@ -1,0 +1,1433 @@
+/*
+ * Two arrangements of one chain of stages, and neither is the default.
+ *
+ * `.map` is Run Explorer's full-width canvas and `.compact` is Ask PIA's narrow
+ * rail. Every rule that gives either one its geometry is written under its own
+ * class, and that is a repair rather than tidiness: the map's wrapping shipped as
+ * a bare rule on `.dag-step`, a `flex: 1 1 190px`, and a basis in the rail's
+ * COLUMN is a height. Each step in the rail became a 190px box around a 60px
+ * card, so the pane drew cards separated by a card's worth of nothing with the
+ * connector labels stranded in the gaps. Nothing about the rail had changed; it
+ * had inherited a measurement meant for the other axis.
+ *
+ * So: NO GEOMETRY ON THE BARE SELECTORS. Not `display`, which is the one that got
+ * away last time -- the two arrangements are a grid and a column, and a shared
+ * `display` is the last thing either can inherit from the other by being the
+ * variant that was not named. If a rule belongs to one arrangement it says which.
+ *
+ * Each is specified separately, which is why the two draw different cards rather
+ * than one card bent into two shapes: the map in
+ * docs/design-handoff-pia-dubois-revamp/agent-map.md, the rail in
+ * live-agent-path.md beside it. Bending one card into two shapes is how the 190px
+ * basis came to exist.
+ */
+/* Vertical breathing room only. Horizontal padding would break the map's arrows;
+   see the clip below. */
+.trace-dag {
+  padding: 4px 0;
+}
+/*
+ * ROWS OF FOUR, which is the handoff's arrangement, and a grid rather than a flex
+ * wrap, which is the repair.
+ *
+ * This was one row with `overflow-x: auto`, so the later stages of an ordinary
+ * eight-stage run sat past the right edge of the page behind a scrollbar on a
+ * container nothing announced as scrollable. Wrapping fixed that and left the
+ * rows ragged: flex items share out the leftover width per row, so a row of five
+ * and a row of four put nine cards in nine different places and nothing lined up
+ * under anything. A grid track is the same width on every row by construction,
+ * and a fixed count of four means the columns are in the same place on every row
+ * of every run rather than being a function of how many cards happened to fit.
+ *
+ * `minmax(0, 1fr)` and not `1fr`: a grid track's implicit minimum is `auto`, so a
+ * long unbroken name in one card would widen its track and take the alignment
+ * with it. Zero is what lets the clamp inside the card do that job instead.
+ *
+ * The count is reduced for a phone in responsive.css, which is where every
+ * structural width in this app lives (see breakpoints.test.ts). There is
+ * deliberately no width query in this file.
+ *
+ * `align-items: stretch` is what makes the cards in a row equal height: the
+ * track is as tall as its tallest card and every card fills it, so a two-line
+ * name beside a one-line name no longer leaves one card floating against the
+ * other's top edge.
+ */
+.trace-dag.map {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  /* The column gap IS the arrow's lane: the connector is positioned into it. */
+  column-gap: 26px;
+  row-gap: 10px;
+  /*
+   * WHAT REMOVES THE ARROW AT THE END OF A ROW. Each arrow is absolutely
+   * positioned in the 26px immediately right of its card, which is a real gutter
+   * for every card except the last in its row -- and for that one it is the
+   * 26px immediately right of the grid, because gaps exist only BETWEEN tracks.
+   * So the arrow that would point at the margin is the only thing that lands
+   * outside this box, and clipping the box is what takes it away, at four
+   * columns or at two, without this file knowing which.
+   *
+   * `clip` and not `hidden` or `auto`: a clip region cannot be scrolled, so the
+   * defect this map was rebuilt to fix -- later stages parked off-screen behind
+   * a scrollbar on a container nothing announced as scrollable -- cannot come
+   * back through this declaration. The vertical axis stays visible so that the
+   * focus ring and the active node's halo are not cropped.
+   */
+  overflow-x: clip;
+  overflow-y: visible;
+}
+/* The rail: one column, in the order the run happened, and no wrapping to undo. */
+.trace-dag.compact {
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+.dag-step {
+  min-width: 0;
+}
+/*
+ * A grid item, and the anchor the arrow hangs off. No flex basis: the track is
+ * the width now. That basis is the declaration that broke the rail, and it is
+ * gone from both arrangements rather than merely scoped away from one.
+ */
+.trace-dag.map .dag-step {
+  position: relative;
+  display: flex;
+  /* So the card fills the track's height rather than centring in it. */
+  align-items: stretch;
+}
+/*
+ * Content height, and no growing. A step in the rail is as tall as the card in
+ * it, whatever the map needs a step to be.
+ *
+ * The indent is depth as a reading aid, 26px a level and capped at 3 by the
+ * component. It is the same custom-property mechanism the live step list uses,
+ * for a reason specific to this file: the two arrangements indent different
+ * boxes. The rail indents the STEP, because a column is where an indent reads as
+ * nesting at all. The map indents inside the CARD (below), because indenting the
+ * cell there would push a nested stage out of the column its neighbours are in,
+ * which is the alignment the grid exists to hold. One pixel value written in the
+ * markup could only ever be right for one of them.
+ *
+ * 26px is `RAIL_INDENT` in agent-map.ts, and the connectors are drawn from that
+ * same figure. It is one number in two files rather than one, and it has to be:
+ * the indent is a layout decision and the arrowhead positions are geometry the
+ * suite checks arithmetically. They are pinned against each other in
+ * agent-map.test.tsx, which reads this rule and compares it to the constant.
+ */
+.trace-dag.compact .dag-step {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding-left: calc(var(--dag-depth, 0) * 26px);
+}
+/*
+ * What both cards share, which is now only the hairline, the corner and the
+ * surface. No `display`, no `padding`, no track list: the map's card is a
+ * two-line tile and the rail's is an icon beside a name, and the last time those
+ * two shared an arrangement the rail inherited a height meant for a row.
+ */
+.dag-node {
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+/*
+ * The map's card, from the handoff: a column of two lines with 7px between them,
+ * padded 11px by 13px.
+ *
+ * It is also a button, so it needs the reset a button always needs: a button
+ * inherits neither the app's face nor its size, and it centres its text.
+ * `height: 100%` is the second half of the equal-height row -- the step
+ * stretches to the track and the card has to fill the step. `min-width: 0` lets
+ * the name inside it clamp rather than widening the track.
+ */
+.trace-dag.map .dag-node {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding-left: calc(13px + var(--dag-depth, 0) * 16px);
+}
+.trace-dag.map .dag-node:hover {
+  background: var(--db-row-hover);
+}
+/* Inset, because the card sits in a track whose right edge is the clip edge: a
+   2px ring outside the box would be cropped on the last column of every row. */
+.trace-dag.map .dag-node:focus-visible {
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: -2px;
+}
+/*
+ * The card whose panel is open.
+ *
+ * The handoff's 2px blue edge on its own near-white blue ground, and the padding
+ * drops a pixel each way to pay for the extra border, so opening a card cannot
+ * move the text inside it or the cards beside it. That compensation is why the
+ * padding is restated here rather than left to inherit: a 2px border added to an
+ * 11px padding is a card one pixel taller than its neighbours in the same row.
+ */
+.trace-dag.map .dag-node.open {
+  border: 2px solid var(--primary);
+  background: var(--db-blue-faint);
+  padding: 10px 12px;
+  padding-left: calc(12px + var(--dag-depth, 0) * 16px);
+}
+/* The number and the duration go to the hover rung of the same blue, which is
+   what marks the open card's own figures without painting the name. */
+.trace-dag.map .dag-node.open .dag-index,
+.trace-dag.map .dag-node.open .dag-timing {
+  color: var(--db-blue-700);
+}
+/*
+ * The kind chip: 22px square, and two fills that mean two different things.
+ *
+ * An agent decision sits on Ice, §2's AI-context surface, which is what every
+ * other agent-context object in this design sits on; a tool call sits on the
+ * neutral wash. What the chip does NOT do is change on hover or on focus -- the
+ * whole card is the button, and a chip that lit up would be claiming to be a
+ * second control inside it.
+ */
+.dag-chip {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  /* The handoff's corner for a 22px chip. Neither of the app's two radii: 4px
+     reads as a square at this size and 8px reads as a circle. */
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dag-chip.agent {
+  background: var(--ast-ice);
+}
+/*
+ * SIZE ONLY. The glyph inside is the shared mark out of AstrolabeMark, and it
+ * carries no colour of its own: the drawing writes `var(--ast-mark-ink)` and
+ * `var(--ast-mark-accent)`, and `astrolabe-mark.css` fills those in from the
+ * `ink` the call site asked for. A `stroke` or a `fill` here would be a second,
+ * slightly different astrolabe blue that no palette check reaches, which is the
+ * whole reason the mark's colour lives in a stylesheet rather than at its call
+ * sites.
+ */
+.dag-chip.agent > svg {
+  width: 13px;
+  height: 13px;
+}
+.dag-chip.tool {
+  background: var(--db-wash);
+}
+/* The handoff's 14px, applied to whichever mark the chip is carrying. The size is
+   safe to state as a square because every one of these has a viewBox: a mark whose
+   own aspect is 16x17 scales to fit rather than being squashed into 14x14.
+
+   `color` rather than `stroke`: it is what a lucide glyph reads through
+   `currentColor`, what the rail's glyph beside it already uses, and what the one
+   DuBois mark published as `currentColor` picks up. The other two marks carry
+   their official fills in the file and are meant to keep them -- restaining a
+   product mark to match its neighbours is the same liberty as redrawing it. */
+.dag-chip.tool > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--db-slate-icon);
+}
+/* The card's top line: chip, number, and the duration pinned to the far end. */
+.trace-dag.map .dag-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* The stage's place in the run, which is what a wrapped map cannot say by
+   position. Two digits from the component, so a column of them lines up; mono
+   and tabular so it reads as an index beside the name rather than as part of it.
+   The rail draws none: a column already reads in order, and a number against
+   every name there restates what the column shows. */
+.trace-dag.map .dag-index {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+/* How long it took, and how many calls it was when that was more than one.
+   Pinned right by the margin rather than by a spacer element. */
+.trace-dag.map .dag-timing {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * TWO LINES, AND AN IDENTIFIER IS NOT BROKEN ACROSS THEM.
+ *
+ * `overflow-wrap: anywhere` reaches this text from the shared list in
+ * answer-body.css, which is the right rule for the agent's prose and the wrong
+ * one for a tool name: a stage the agent had no reader's label for is named
+ * "Called search_semantics", and `anywhere` did what it is told and split it as
+ * "search_semantic" with a lone "s" on the next line. That is the same defect
+ * answer-body.css records against the result breakdown, where a 60px column
+ * split the word "transaction". The rule is not wrong; it was being asked a
+ * question no answer to which was readable.
+ *
+ * So: break at spaces only, clamp at two lines, and the full name is on the
+ * card's `title` and in the panel the card opens. Nothing is lost by clipping a
+ * name that a hover and a click both spell out, and a clamp keeps the cards a
+ * uniform height, which is the other half of what the grid is for.
+ */
+.trace-dag.map .dag-name {
+  min-width: 0;
+  font-size: var(--text-base);
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: normal;
+}
+/* The tool's own id inside a name. A value rather than prose, so it takes the
+   mono face every other identifier in the app takes -- which is also the second
+   thing stopping it breaking mid-word. */
+.trace-dag.map .dag-name-tool {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.trace-dag.map .dag-node [data-slot='badge'] {
+  align-self: flex-start;
+  font-size: 9px;
+}
+/* ---- The rail's tile, from live-agent-path.md: a numbered badge, a 13px mark,
+   the name, and the duration pinned right, on one line. Four fixed tracks and a
+   name that may shrink, which is what keeps the badges of every card in one
+   column -- the column the connectors are drawn down. ---- */
+.trace-dag.compact .dag-node {
+  display: grid;
+  grid-template-columns: 20px 13px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  /* The design's small hairline tile, at the control radius rather than the row
+     one, which is what the small tiles take everywhere in the rail. */
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  min-width: 0;
+  /* It is a button now, and a button inherits neither the app's face nor its size
+     and centres its own text. The same reset the map's card carries. */
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.trace-dag.compact .dag-node:hover {
+  background: var(--db-row-hover);
+}
+/* Inset, like the map's: the tile's own connector is drawn 16px below it, and a
+   ring outside the box would sit on the arrowhead. */
+.trace-dag.compact .dag-node:focus-visible {
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: -2px;
+}
+/* Open is the map's mark for it, so a step reads as open the same way in both
+   panes: the 2px blue edge on the faint blue ground. The padding drops a pixel
+   each way to pay for the extra border, because a tile that grows when it is
+   pressed moves the connector under it and every step below that. */
+.trace-dag.compact .dag-node.open {
+  border: 2px solid var(--primary);
+  background: var(--db-blue-faint);
+  padding: 8px 9px;
+}
+/*
+ * The step's place in the run, as a 20px square.
+ *
+ * A badge rather than a bare number, because the fill is the second thing it
+ * says: Ice on an agent decision, the neutral wash on a tool call, which is the
+ * same two-fill distinction the map's kind chip makes. Mono and tabular so a
+ * column of them lines up, and 20px square so the badge itself does too -- the
+ * connectors are drawn to the centre of this box.
+ */
+.trace-dag.compact .dag-num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.trace-dag.compact .dag-num.agent {
+  background: var(--ast-ice);
+}
+.trace-dag.compact .dag-num.tool {
+  background: var(--db-wash);
+}
+/* The kind mark's cell. 13px, and centred in its track so it sits on the badge's
+   middle rather than on the first line of a name that may be taller than it. */
+.trace-dag.compact .dag-mark {
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+}
+.trace-dag.compact .dag-mark > svg {
+  width: 13px;
+  height: 13px;
+}
+/* The tool families' glyphs are lucide and read `currentColor`. The mark beside
+   them carries no colour here at all: every fill in it is `currentColor` and
+   `.ast-mark` in constellation.css is the one rule that chooses the ink, so this
+   seating and the map's kind chip are painted by one declaration. A `color` here
+   would be a second astrolabe blue, which is the whole reason the mark's ink lives
+   in a stylesheet. */
+.trace-dag.compact .dag-mark.tool > svg {
+  color: var(--db-slate-icon);
+}
+.trace-dag.compact .dag-node strong {
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+/*
+ * ONE LINE, AND AN IDENTIFIER IS NOT BROKEN ACROSS IT.
+ *
+ * Same defect as the map's, and this is the narrower pane, so it is the likelier
+ * one: the shared `overflow-wrap: anywhere` in answer-body.css split "Called
+ * search_semantics" as "search_semantic" with a lone "s" underneath. Breaking at
+ * spaces only is half the repair and the mono face below is the other half.
+ *
+ * Clipped rather than clamped, and with no `title`: a name too long for 264px
+ * runs out at the duration rather than wrapping the row to two lines, which is
+ * what keeps every card in the column the same height and the connectors between
+ * them the same length.
+ */
+.trace-dag.compact .dag-name {
+  display: block;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The tool's own id inside a name. A value rather than prose, so it takes the
+   mono face every other identifier in the app takes -- which is also the second
+   thing stopping it breaking mid-word. */
+.trace-dag.compact .dag-name-tool {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+/* How long the step took, pinned right by its own track. Tabular, because the
+   rail is read as a column and the figures should line up down it. */
+.trace-dag.compact .dag-elapsed {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.trace-dag.compact .dag-node [data-slot='badge'] {
+  grid-column: 1/-1;
+  justify-self: start;
+  font-size: 9px;
+}
+/* A partial stage is the one thing in the trace panel worth interrupting for: the
+   answer above it was assembled from an incomplete run. That is a claim about
+   correctness rather than decoration, so it keeps the danger family. Red is
+   readable at one pixel — 4.99:1 on white — which is why this edge may be a
+   hairline and the live one below it may not. */
+.dag-node.partial {
+  border-color: var(--db-red-600);
+  background: var(--db-red-wash);
+}
+/* A step that failed KEEPS ITS CARD, which is the handoff's instruction and the
+   opposite of what a tidier map would do. The red edge and the red duration are
+   what say so; the panel it opens quotes the server verbatim. Dropping the card
+   would leave the run's numbering with a hole in it and no explanation. */
+.dag-node.failed {
+  border-color: var(--db-red-600);
+}
+.trace-dag.map .dag-node.failed .dag-timing {
+  color: var(--db-red-600);
+}
+.trace-dag.compact .dag-node.failed .dag-elapsed {
+  color: var(--db-red-600);
+}
+/*
+ * The stage the agent is inside right now, which is this pane's one live moment.
+ *
+ * §2 removes orange from the palette, and agent-at-work is blue. `#12ar` draws it
+ * as a 1px blue edge on Ice rather than as the 2px orange outline this used to
+ * be, and a hairline is enough here because blue is 4.6:1 on white where the
+ * working orange was 3.62:1 and so had to be a mass. A border rather than an
+ * outline for the same reason the design draws one: the card sits in a column with
+ * a card above and below it, and an outline is drawn outside the box, so at 2px it
+ * overlapped its neighbours' edges.
+ *
+ * NO PULSE. The live step is marked twice already -- the edge and the moving
+ * counter -- and a pulsing card in a list is motion nobody asked for on a surface
+ * that is read rather than watched. The animation the live moment gets is the line
+ * drawing into the current star on the band above, which is `aria-hidden` and
+ * frozen under `prefers-reduced-motion`; a `pulse` here was neither.
+ */
+.dag-node.active {
+  border-color: var(--ast-blue);
+  background: var(--ast-ice);
+}
+/*
+ * The active card's own figures, on the rail.
+ *
+ * The badge goes to white so it reads as lifted off the Ice fill the rest of the
+ * card has taken, and both it and the duration go to the warning family's text
+ * rung, #8A6A38: 5.1:1 on white, and the one figure in this pane that is not a
+ * completed measurement should not read as one of the settled greys beside it.
+ * `#12ar` draws exactly this.
+ */
+.trace-dag.compact .dag-node.active .dag-num {
+  background: var(--card);
+  color: var(--ast-warn-text);
+  font-weight: 500;
+}
+.trace-dag.compact .dag-node.active .dag-elapsed {
+  color: var(--ast-warn-text);
+}
+/*
+ * The step that was announced and has not reported, whether or not it is still
+ * the live one.
+ *
+ * Its figure is the only one in this pane that is not a completed measurement --
+ * a count still moving while the run goes, and the words "not finished" once it
+ * has ended -- so it is the one figure that must not be read down the column as
+ * a duration. The drift rung is what the active card's figure already uses and
+ * carries the same meaning: warm, and 4.82:1 on white, so it may be type where
+ * the working orange may not.
+ *
+ * Not red. A run that died inside a step tells us only that the step's report
+ * never arrived; the step itself may well have finished, and `.failed` is a claim
+ * this has no evidence for.
+ */
+.trace-dag.compact .dag-node.running .dag-elapsed {
+  color: var(--db-warn-600);
+}
+.dag-edge {
+  flex: none;
+}
+/*
+ * On the map, the connector is an arrow, and it lives in the column gutter.
+ *
+ * It used to be laid out INSIDE the step, which is what put an arrow after the
+ * last card of every wrapped row: the step was card-plus-arrow, so the arrow was
+ * drawn whether or not there was another card beside it to point at. It was also
+ * the reason the columns could not line up, since a step's width was a card's
+ * width plus 26px of connector.
+ *
+ * Positioned into the gutter instead, off the step it belongs to: `left: 100%` is
+ * the step's right edge and the width is the whole gap. For every card but the
+ * last of its row that is the space between two cards. For the last one it is the
+ * 26px past the end of the grid, because a gap exists only between tracks -- and
+ * `overflow-x: clip` on the container is what then takes it away. So the arrows
+ * that survive are exactly the ones with a card on both sides, at any number of
+ * columns, and the run's final step keeps no arrow because the markup never
+ * renders one for it.
+ *
+ * `top: 0; bottom: 0` rather than a fixed height, so the glyph centres against
+ * the card's full height whatever the tallest name in the row made that.
+ */
+.trace-dag.map .dag-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--db-connector);
+  font-size: 14px;
+  line-height: 1;
+}
+.trace-dag.map .dag-edge::before {
+  content: '\2192';
+}
+/* Announced, not drawn: there is no room to letter an arrow in a 26px gutter, and
+   "calls" versus "then" is nesting versus sequence, which is the one thing the
+   map is for. The rail below letters it instead. */
+.trace-dag.map .dag-edge span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/*
+ * Vertically, the SHAPE is the edge, and there is no word left to read.
+ *
+ * The rail lettered this gap for a while -- "calls" for nesting, "then" for
+ * sequence -- and before that drew a dotted line with the label suppressed, which
+ * said two stages were related and not how. live-agent-path.md removes both: the
+ * relation is carried by the indent and by which of three shapes is drawn, so a
+ * 10px word in a 16px gutter is a third statement of something already said
+ * twice.
+ *
+ * THE COORDINATES ARE THE RAIL'S, NOT THE STEP'S. A connector is a child of the
+ * step above it, and that step is indented by its own depth, so an elbow leaving
+ * an indented card would start 26px right of where the drawing puts it. The
+ * negative margin sheds exactly that indent, from the same custom property it was
+ * applied from, so the two can never disagree -- and it is why every path in
+ * agent-map.ts can be written in one coordinate system measured from the pane's
+ * left edge.
+ *
+ * No arrow to suppress and no clip to undo: the map's rules are the map's, so the
+ * rail states what it wants rather than reversing what it was given.
+ */
+.trace-dag.compact .dag-edge {
+  height: 16px;
+  margin-left: calc(var(--dag-depth, 0) * -26px);
+  color: var(--db-connector);
+}
+.trace-dag.compact .dag-edge > svg {
+  display: block;
+}
+/*
+ * ── What a node opens ──────────────────────────────────────────────────────
+ *
+ * A row of the grid rather than a box beside it: `1 / -1` spans every column, so
+ * the panel is the full width of the map whatever the width made the column
+ * count, and a recorded SQL statement has somewhere to be read. It sits at the
+ * foot of the grid, which is the one position that does not move a card -- a
+ * panel spliced in after the card that opened it would leave the rest of that row
+ * empty and shift every later step into a different column.
+ *
+ * `overflow: hidden` so the header's wash is cut by the card's own corner rather
+ * than squaring it off.
+ *
+ * The map only. The rail draws no panel, so none of this is written on a bare
+ * selector where the rail could pick it up.
+ */
+.trace-dag.map .dag-detail {
+  grid-column: 1 / -1;
+  border: 1px solid var(--ast-hairline);
+  border-radius: var(--ast-radius-card);
+  background: var(--ast-white);
+  overflow: hidden;
+  min-width: 0;
+}
+/* The panel's header, which carries the step's identity on the left and its three
+   measurements on the right. One line rather than the two labelled rows this
+   panel opened with, which is the handoff's arrangement and also takes the two
+   figures a reader actually came for out of a grid they had to scan. */
+.trace-dag.map .dag-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--ast-fill-band);
+  border-bottom: 1px solid var(--ast-hairline);
+}
+.trace-dag.map .dag-detail-head strong {
+  min-width: 0;
+  font-size: var(--ast-fs-13);
+  font-weight: 700;
+}
+/* The name inside the header is not clamped: the panel is the full width of the
+   map and this is the one place the whole name is spelled out. */
+.trace-dag.map .dag-detail-head .dag-name {
+  display: inline;
+  font-weight: 700;
+  overflow: visible;
+}
+/* Started, took, and how many calls, as one tabular run of mono. Pinned right by
+   the margin, so a long step name shortens rather than pushing it off. */
+.trace-dag.map .dag-detail-measures {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ast-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * The handoff's 110px label grid. Same shape as the Timeline's expanded row,
+ * which is the same recorded fields read on another surface.
+ *
+ * A CHILD selector, and that is load-bearing rather than tidiness. Written as a
+ * descendant it also claimed the `dl` a rendered result nests inside its own
+ * `dd` -- and won, because three classes plus a type beats the three classes
+ * `.dag-facts` has. The fact grid asks to be `display: block` so each pair is a
+ * row; it was made a two-track grid instead, which put "Key used" beside the
+ * Table chip rather than under it, crushed each pair's own 96px label column
+ * into a 110px cell, and left about four pixels for the value -- the column that
+ * read one word per line. `overflow: hidden` above then cut what spilled.
+ *
+ * `minmax(0, 1fr)` rather than `1fr` for the same reason it is on the grids
+ * below: a track sized `1fr` will not go under the width of its content, so one
+ * long identifier pushes the value column to nothing instead of being clipped
+ * itself.
+ */
+.trace-dag.map .dag-detail > dl {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 0;
+  padding: 12px 14px;
+  font-size: var(--ast-fs-13);
+}
+.trace-dag.map .dag-detail > dl > dt {
+  font-size: var(--ast-fs-12);
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-detail > dl > dd {
+  margin: 0;
+  min-width: 0;
+}
+/* Measurements read as measurements; the tool's own name and the stage's
+   reference are values rather than prose, so they take the same mono face every
+   other identifier in the app does. */
+.trace-dag.map .dag-detail-measured,
+.trace-dag.map .dag-detail-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/* A field the run recorded nothing for. In words and in italic, so it cannot be
+   read as a value the stage actually returned. */
+.trace-dag.map .dag-detail-absent {
+  color: var(--ast-text-secondary);
+  font-style: italic;
+}
+.trace-dag.map .dag-detail-flag {
+  margin-bottom: 6px;
+}
+/* The agent's own ceiling, in the negative family because a value that was cut
+   off is a value the reader must not take as whole. #A04A62, which is this
+   palette's red; the DuBois #C82D4C it was is a brighter one and belongs to no
+   family here. */
+.trace-dag.map .dag-clipped {
+  flex: none;
+  font-size: var(--ast-fs-11);
+  font-weight: 500;
+  color: var(--ast-neg-text);
+}
+/*
+ * A recorded payload, in the app's code fill at the handoff's 6px corner.
+ *
+ * Sized to content and not scrolled: the arguments are short, and a scrollbar
+ * inside a panel inside a grid is the arrangement that parked half of this map
+ * off-screen the last time. The one block that genuinely cannot be sized to
+ * content is the whole run's JSON, and it is capped where it is used rather than
+ * here.
+ */
+.trace-dag.map .dag-block {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-12);
+  line-height: 1.5;
+  background: var(--ast-fill-band);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+/* The key of an unwrapped argument. Weight rather than colour, because the value
+   beside it is the thing being read. */
+.trace-dag.map .dag-arg > b {
+  font-weight: 500;
+  color: var(--ast-text-secondary);
+}
+/* What answered, and the control that says how to draw what it said. */
+.trace-dag.map .dag-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+/*
+ * The source of a result, on the Result row's own line.
+ *
+ * The product mark, the name, and the id. It sits where the character count used
+ * to, which is the trade the design makes and the right one: the count measured a
+ * payload the reader is no longer looking at, and WHICH GENIE SPACE ANSWERED is a
+ * fact about the run that was previously only recoverable by reading the first
+ * line of the prose dump.
+ */
+.trace-dag.map .dag-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--ast-fs-12);
+}
+.trace-dag.map .dag-source > strong {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/*
+ * The id: a handle for comparing against another tab rather than something to
+ * read, so it carries no colour of its own.
+ *
+ * OUTLINED AND NOT FILLED, which is what the detail spec asks for by name and
+ * what the design reference draws at 15ar. It was a #E8ECF0 slab with no edge,
+ * and this chip sits on the Result row's own header beside the space name -- a
+ * grey tint there reads as a second heading rather than as a value pinned to the
+ * one above it. An edge draws the boundary the fill was standing in for, and
+ * leaves the row one background instead of two.
+ *
+ * Not `.ast-pill`, and the distinction is what the recipe is for: a pill is a
+ * label in words, and this is a value. §3 sets an identifier as mono type, and
+ * the truncation is `truncatedId`'s, with the whole id in `title` and on copy.
+ */
+.trace-dag.map .dag-space-id {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--ast-radius-control);
+  padding: 0 5px;
+}
+.trace-dag.map .dag-source-aside {
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+}
+/* Rendered | Raw, as the app's one segmented control: a hairline outline, and the
+   pressed segment filled in the action colour with white on it. */
+.trace-dag.map .dag-seg {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--ast-radius-control);
+  overflow: hidden;
+}
+.trace-dag.map .dag-seg button {
+  font: inherit;
+  font-size: var(--ast-fs-11);
+  padding: 2px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-seg button[aria-pressed='true'] {
+  background: var(--ast-blue);
+  color: var(--ast-white);
+}
+/*
+ * ── A result drawn as the shape it is ─────────────────────────────────────
+ *
+ * Every renderer in `StepResult.tsx` lands in here. The vocabulary is the panel's
+ * own and nothing below invents a colour: an identifier is the app's blue chip,
+ * a governance rule is the amber evaluation family, and everything else is the
+ * hairline, the wash and the muted grey the rest of this file already spends.
+ */
+.trace-dag.map .dag-md p,
+.trace-dag.map .dag-md ul,
+.trace-dag.map .dag-md ol {
+  margin: 0 0 6px;
+}
+.trace-dag.map .dag-md > :last-child {
+  margin-bottom: 0;
+}
+.trace-dag.map .dag-md ul,
+.trace-dag.map .dag-md ol {
+  padding-left: 18px;
+}
+.trace-dag.map .dag-md li {
+  margin-bottom: 2px;
+}
+.trace-dag.map .dag-md-head {
+  display: block;
+  margin-bottom: 4px;
+}
+/* A table or column name wherever one appears in a sentence. The info family,
+   which is what every other surface in the app sets an identifier in, and the two
+   values the detail spec names for this chip: #0E538B on #DDEAF4, 6.34:1. Same
+   3px box as the identifier tags on the answer card, so a name is one shape
+   wherever the app draws one. */
+.trace-dag.map .dag-name-chip {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--ast-info-fill);
+  color: var(--ast-info-text);
+  border-radius: 3px;
+  padding: 0 4px;
+  /* A fully qualified name is three segments and sixty characters, and it is the
+     value of a row 1fr wide. Cut here, with the whole name on hover, rather than
+     letting one name set the width of the grid every other row is measured
+     against. `bottom` so the chip sits on the text baseline it interrupts. */
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+/*
+ * The question a step was asked.
+ *
+ * The same wash and corner as a recorded payload block, because that is what it
+ * is -- but set in the reading face rather than in mono, since it is a sentence
+ * the model wrote in English and only the names in it are code.
+ */
+.trace-dag.map .dag-asked-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.trace-dag.map .dag-asked {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--ast-fs-12);
+  line-height: 1.5;
+  background: var(--ast-fill-band);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+/* A filter on the question. Outlined rather than filled: it qualifies the block
+   beside it, and a second filled mass would read as a second question. */
+.trace-dag.map .dag-arg-chip {
+  flex: none;
+  margin-top: 6px;
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--ast-radius-control);
+  padding: 1px 7px;
+}
+/* A shape's own rows, in the label grid the panel above it already uses so the
+   two align rather than stepping in and out. */
+.trace-dag.map .dag-shape {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+  font-size: var(--ast-fs-12);
+}
+.trace-dag.map .dag-shape > dt {
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-shape > dd {
+  margin: 0;
+  min-width: 0;
+}
+/* The fact grid is a list of rows rather than a `dt`/`dd` sequence, so each pair
+   is a subgrid inheriting the same two columns. */
+.trace-dag.map .dag-facts {
+  display: block;
+}
+.trace-dag.map .dag-facts > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.trace-dag.map .dag-facts dt {
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+/* A Genie result set. Sized to its content rather than stretched: a one-column
+   count stretched to the panel's width is a table pretending to be a report.
+   
+   Scrolls when its content is wider than the row it sits in, which is not a
+   hypothetical: a dictionary lookup that returned five rows keeps its four
+   columns, and a business definition is a sentence. The panel above clips
+   anything that overflows it, so without this the last column is cut off with no
+   way to reach it. */
+.trace-dag.map .dag-grid {
+  overflow-x: auto;
+}
+.trace-dag.map .dag-grid table {
+  border-collapse: collapse;
+  font-size: var(--ast-fs-12);
+  border: 1px solid var(--ast-hairline);
+  border-radius: 6px;
+}
+.trace-dag.map .dag-grid th {
+  background: var(--ast-fill-band);
+  text-align: left;
+  font-size: var(--ast-fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ast-text-secondary);
+  padding: 5px 10px;
+}
+.trace-dag.map .dag-grid td {
+  border-top: 1px solid var(--ast-hairline);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.trace-dag.map .dag-grid-note {
+  margin: 4px 0 0;
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+}
+/*
+ * One dictionary field, as a definition.
+ *
+ * No label column: the card states a single field, so a "Field"/"Definition"
+ * grid would be labelling what the chip and the sentence already say.
+ */
+.trace-dag.map .dag-definition {
+  font-size: var(--ast-fs-12);
+}
+.trace-dag.map .dag-definition-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+.trace-dag.map .dag-definition-in {
+  color: var(--ast-text-secondary);
+}
+/* Cut with the whole name on hover, the same as a name chip. This line is a flex
+   row that wraps, so a fully qualified name does not push the guardrail chip off
+   the card -- it takes a line of its own and then overflows THAT, which the panel
+   clips. `min-width: 0` is what lets it shrink at all. */
+.trace-dag.map .dag-definition-table {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The governance rule. The whole of its box and both of its colours come from
+   `.ast-pill --warn` on the markup: a wash with the deep rung on it as type,
+   never the hue as the type. It is the one thing on this card a reader must not
+   skim past, and nothing is declared here so it cannot drift from the warning
+   chips on the Sources rows and in the plan.
+
+   `flex: none` is this seating's alone. The head is a wrapping flex row and the
+   chip is the last thing in it, so without this a long guardrail sentence lets
+   the chip be compressed by the table name beside it. */
+.trace-dag.map .dag-guardrail {
+  flex: none;
+}
+.trace-dag.map .dag-definition-body {
+  margin: 0;
+}
+/* The answer's own conclusion, held apart from the dictionary's words above it by
+   a rule: one is what the dictionary says and the other is what the model made of
+   it, and a reader has to be able to tell which is which. */
+.trace-dag.map .dag-definition-verdict {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ast-hairline);
+}
+/*
+ * What a semantic search matched, one row per entry.
+ *
+ * Rows rather than a wall: the point of the view is choosing which table to ask
+ * about, so the name and the column count are on the shut row and everything else
+ * is behind it.
+ */
+.trace-dag.map .dag-tables {
+  border: 1px solid var(--ast-hairline);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.trace-dag.map .dag-table-row + .dag-table-row {
+  border-top: 1px solid var(--ast-hairline);
+}
+.trace-dag.map .dag-table-row > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: var(--ast-fs-12);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 7px 10px;
+}
+.trace-dag.map .dag-table-row > button:hover {
+  background: var(--ast-fill-band);
+}
+.trace-dag.map .dag-table-row > button > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ast-text-secondary);
+  transition: transform 120ms ease;
+}
+.trace-dag.map .dag-table-row.open > button > svg {
+  transform: rotate(90deg);
+}
+.trace-dag.map .dag-table-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-11);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The catalog and schema: present, because a result can span two schemas, and
+   recessive, because within one they are the same string on every row. */
+.trace-dag.map .dag-table-lead {
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-table-object {
+  font-weight: 600;
+}
+/* Certification as recorded. Neutral on purpose: `uncertified` is the state of
+   almost every entry in a demo workspace, and drawn as a warning it would put a
+   row of amber down the panel saying nothing.
+
+   Outlined and not tinted, which the detail spec asks for by its two values and
+   the shared recipe supplies: #46596B inside a #CBCBCB edge, at 5.42:1 on white,
+   so the label clears AA at 11px. `.ast-pill --neutral-outline` on the markup is
+   where both of those live now. */
+.trace-dag.map .dag-cert {
+  flex: none;
+}
+/* The face is `.ast-num` on the markup. What stays here is the placement, which
+   is this seating's and not the numeral rule's. */
+.trace-dag.map .dag-col-count {
+  flex: none;
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-table-body {
+  padding: 0 10px 9px 32px;
+}
+/* Two lines, then cut. The description is there to answer "is this the table I
+   want", which the first sentence does; a dictionary table whose description runs
+   to a paragraph would otherwise push the columns under it off the panel, and the
+   columns are the other half of that same question. */
+.trace-dag.map .dag-table-about {
+  margin: 0 0 6px;
+  font-size: var(--ast-fs-12);
+  color: var(--ast-text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.trace-dag.map .dag-col-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+}
+/* A column and its type as one chip: the name in the identity face, the type
+   beside it recessive, because the reader is scanning names and using the type to
+   confirm one. */
+.trace-dag.map .dag-col-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: var(--ast-fs-11);
+  background: var(--ast-fill-band);
+  border: 1px solid var(--ast-hairline);
+  border-radius: var(--ast-radius-control);
+  padding: 1px 6px;
+}
+.trace-dag.map .dag-col-chip > code {
+  font-family: var(--font-mono);
+}
+.trace-dag.map .dag-col-chip > span {
+  color: var(--ast-text-secondary);
+}
+/* The rest of the columns, as the one control on the row that is a link: it
+   reveals text in place rather than navigating or changing the record. */
+.trace-dag.map .dag-col-more {
+  font: inherit;
+  font-size: var(--ast-fs-11);
+  color: var(--ast-blue);
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+}
+.trace-dag.map .dag-tables-note {
+  margin: 0;
+  border-top: 1px solid var(--ast-hairline);
+  background: var(--ast-fill-band);
+  padding: 6px 10px;
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+}
+/*
+ * A note at the end of an agent step, as a block of its own.
+ *
+ * The whole point of the treatment: it used to be the last sentences of the same
+ * paragraph as the findings, and it is the part that QUALIFIES them -- that the
+ * key is scoped per label, that a cross-label count needs a different one. A
+ * reader who skims to the figure and stops has to see that it has a caveat.
+ */
+.trace-dag.map .dag-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--ast-fs-12);
+  border: 1px solid var(--ast-hairline);
+  border-left: 3px solid var(--ast-border-input);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.trace-dag.map .dag-note-tag {
+  flex: none;
+  font-size: var(--ast-fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ast-text-secondary);
+}
+/*
+ * A result that turned out to be a grid, drawn as one.
+ *
+ * A table printed as preformatted text is a table the reader has to align by
+ * eye, which on a twenty-column `describe_table` is most of the work they opened
+ * the step to do. The numerals are mono and tabular and right-aligned so a
+ * column of them can be compared down its length.
+ */
+.trace-dag.map .dag-result-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ast-fs-12);
+}
+.trace-dag.map .dag-result-table th {
+  background: var(--ast-fill-band);
+  text-align: left;
+  font-size: var(--ast-fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ast-text-secondary);
+  padding: 5px 8px;
+}
+.trace-dag.map .dag-result-table td {
+  border-top: 1px solid var(--ast-hairline);
+  padding: 5px 8px;
+}
+/* The last column is the measured one in every result this panel draws -- a null
+   rate, a count, a share -- so it is the one set in figures. */
+.trace-dag.map .dag-result-table td:last-child {
+  font-family: var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * A row with something to report, in the warning family.
+ *
+ * This is the one thing a reader scanning a null-rate or a coverage table is
+ * scanning FOR, and it is derived from the numbers rather than from any knowledge
+ * of what the table is: a table with nothing at zero has no findings to mark,
+ * because then every row would be marked and the tint would say nothing. A wash
+ * with the deep-enough rung on it as type, never the hue as the type.
+ *
+ * The family it names has moved with the palette and not just its hex. It was
+ * DuBois' amber -- #FFF9EB with #BE501E on it -- and #BE501E is an orange, which
+ * this palette does not have. Warning is #8A6A38 on #F9F6EF, 5.24:1, and it is
+ * the same three values the guardrail chip and the plan's waiting state take.
+ */
+.trace-dag.map .dag-result-table tr.finding {
+  background: var(--ast-warn-fill);
+}
+.trace-dag.map .dag-result-table tr.finding td:last-child {
+  color: var(--ast-warn-text);
+  font-weight: 500;
+}
+/* The uniform tail, folded into one line and deliberately unmarked: the rows in
+   it are the ones with nothing to report. */
+.trace-dag.map .dag-result-tail td {
+  color: var(--ast-text-secondary);
+  font-family: inherit;
+  text-align: left;
+}
+/*
+ * ── The statement the step generated ──────────────────────────────────────
+ */
+.trace-dag.map .dag-sql {
+  margin: 0 14px 14px;
+  border: 1px solid var(--ast-hairline);
+  border-radius: var(--ast-radius-card);
+  overflow: hidden;
+}
+.trace-dag.map .dag-sql-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ast-fill-band);
+  border-bottom: 1px solid var(--ast-hairline);
+}
+.trace-dag.map .dag-sql-head strong {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.trace-dag.map .dag-sql-lines {
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.trace-dag.map .dag-sql-copy {
+  flex: none;
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--ast-radius-control);
+  background: transparent;
+  color: var(--ast-text-secondary);
+}
+.trace-dag.map .dag-sql-copy:hover {
+  background: color-mix(in srgb, var(--ast-blue) 8%, transparent);
+}
+.trace-dag.map .dag-sql-copy > svg {
+  width: 13px;
+  height: 13px;
+}
+/*
+ * CLAMPED, NOT SCROLLED, and the clamp opens.
+ *
+ * 196px is around ten lines, which is a statement a reader can take in; past
+ * that they are reading rather than glancing and should be able to say so. A
+ * scroller here would be the same defect this map was rebuilt out of, one axis
+ * over: content parked outside a box nothing announces as scrollable.
+ */
+.trace-dag.map .dag-sql-body {
+  position: relative;
+  max-height: 196px;
+  overflow: hidden;
+}
+.trace-dag.map .dag-sql.open .dag-sql-body {
+  max-height: none;
+}
+.trace-dag.map .dag-sql-body pre {
+  margin: 0;
+  padding: 9px 11px;
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-12);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+}
+/* The keywords the handoff picks out, in the info family's text rung at 500 --
+   #0E538B, which the detail spec names for exactly this -- so they separate from
+   the body ink without competing with a link. */
+.trace-dag.map .dag-sql-body pre b {
+  color: var(--ast-info-text);
+  font-weight: 500;
+}
+/* The fade, and the way past it. Both are in the same box, so the link always
+   sits on the fade rather than on a line of the statement. */
+.trace-dag.map .dag-sql-more {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 22px 0 6px;
+  border: 0;
+  font: inherit;
+  font-size: var(--ast-fs-12);
+  color: var(--ast-blue);
+  background: linear-gradient(to bottom, transparent, var(--ast-white) 60%);
+}
+/*
+ * ── The whole run's payloads, behind one row ──────────────────────────────
+ *
+ * A row of the grid like the panel above it, and shut on arrival: this is several
+ * hundred lines on an ordinary run, and a disclosure that opens itself is a
+ * disclosure that pushes the map it belongs to off the screen.
+ */
+.trace-dag.map .dag-raw {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--ast-hairline);
+  padding-top: 8px;
+  min-width: 0;
+}
+.trace-dag.map .dag-raw > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.trace-dag.map .dag-raw > button > svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--ast-text-secondary);
+  transition: transform 120ms ease;
+}
+.trace-dag.map .dag-raw.open > button > svg {
+  transform: rotate(90deg);
+}
+.trace-dag.map .dag-raw-label {
+  font-size: var(--ast-fs-13);
+  font-weight: 500;
+}
+.trace-dag.map .dag-raw-meta {
+  font-family: var(--font-mono);
+  font-size: var(--ast-fs-11);
+  color: var(--ast-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/* The one payload block that cannot be sized to content. Capped and scrolled
+   here, where the length is known to be unbounded, rather than on `.dag-block`
+   where it would also cap the arguments the handoff wants sized to content. */
+.trace-dag.map .dag-raw .dag-block {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+/*
+ * THE `pulse` HALO IS GONE, and its reduced-motion guard with it.
+ *
+ * It was a 1.4s box-shadow cycle in `--db-orange` at 14%, held rather than cycled
+ * for a reader who had asked for no motion. Both halves went with the colour: §2
+ * removes orange from the palette, and the live step is marked by the blue edge and
+ * the moving counter above, which say the same thing without moving.
+ *
+ * The keyframe is not restated in blue. A card that breathes for the whole length
+ * of a run was the longest-running animation in the app and the one the old spec
+ * recorded as a known accessibility gap; the motion the live moment gets now is the
+ * line drawing into the current star on the band, which is `aria-hidden` and frozen
+ * by the guard in astrolabe-animation.css.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .trace-dag.map .dag-raw > button > svg {
+    transition: none;
+  }
+}
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.metric-row span,
+.metric-row strong {
+  display: block;
+  font-size: 10px;
+}
+.metric-row strong {
+  font-size: 12px;
+  margin-top: 3px;
+}

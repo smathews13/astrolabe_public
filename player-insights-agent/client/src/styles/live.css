@@ -1,0 +1,201 @@
+/* --- The run while it is still going ------------------------------------- */
+/* Rows rather than the compact rail: the rail subsampled to four stages, which
+   on a twenty-one step run silently dropped seventeen of them. Every reported
+   step is drawn here, with the arguments it was actually given. */
+
+.live-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-progress-detail {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+/*
+ * The step list: one bounded, hairline-ruled scroller rather than a stack of
+ * cards.
+ *
+ * The rows used to be separate 10px cards with a gap between them, which at four
+ * steps read as four unrelated objects. They are rows of one list, so they get one
+ * frame and a rule between them. The height stays bounded at the ~340px the spec
+ * names: a long run pushes the composer off the screen otherwise, and dropping
+ * rows is the behaviour this panel replaced.
+ */
+.live-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-sm);
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.live-step {
+  display: grid;
+  grid-template-columns: 13px 1fr;
+  gap: 10px;
+  padding: 9px 12px;
+  /*
+   * Depth as a reading aid, 16px a level and capped at 3 by `toLiveStep`. Indented
+   * by padding rather than by a margin, so the row still spans the full width of
+   * the list and its rule still reaches both edges.
+   */
+  padding-left: calc(12px + var(--live-depth, 0) * 16px);
+  /*
+   * Reserved, not added. The newest row takes a 3px orange edge below, and a
+   * transparent one of the same width here means gaining it does not shift the
+   * row's text by three pixels as the run moves on.
+   */
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--db-line);
+  background: var(--card);
+}
+
+/* One frame, so the last row's rule would be a second bottom border. */
+.live-step:last-child {
+  border-bottom: none;
+}
+
+/* A step that did not finish cleanly. The reserved left edge is what carries it now
+   that the rows are ruled rather than boxed: red is readable at any width — 5.33:1
+   on white — so unlike the working colour it may also tint the rule below the row. */
+.live-step.partial,
+.live-step.failed {
+  border-left: 3px solid var(--db-red-600);
+  border-bottom-color: var(--db-red-line);
+  background: var(--db-red-wash);
+}
+
+/*
+ * Where the run is now: the step in flight if the endpoint named one, and
+ * otherwise the newest it has reported, which is the same place.
+ *
+ * BLUE ON ICE, which is both halves of the restyle in one rule. §1 names "active
+ * step edge" among the agent-at-work states that move to #2272B4, and §2 replaces
+ * oat #F9F7F4 with Ice #F0F6FB everywhere it was a surface.
+ *
+ * The 3px edge stays, and the reason it exists is worth keeping even though the
+ * colour that forced it is gone: the failure rows above are a 1px border plus a
+ * wash, and this row was given a heavier left edge because orange was barred from
+ * hairlines. Blue is not, so the geometry is now a choice rather than a
+ * constraint. It stays because these two rows have to be told apart at a glance
+ * in a list where a failure is red and an active step is blue, and edge weight is
+ * the difference a reader can see without reading the colour.
+ *
+ * The width is restated here rather than left to the reserved edge above, because
+ * `palette.test.ts` reads this declaration on its own: a `border-color` whose
+ * width lives in another rule is a rule that has to be read in two places to be
+ * checked, which is a rule that does not get checked.
+ */
+.live-step.running,
+.live-step.newest {
+  border-left: 3px solid var(--ast-blue);
+  background: var(--ast-ice);
+}
+
+/* A failed newest step keeps red. The outcome is the more important of the two
+   claims, and orange saying "this is where the run is" on a row that has just
+   failed would talk over it. */
+.live-step.newest.partial,
+.live-step.newest.failed,
+.live-step.running.partial,
+.live-step.running.failed {
+  border-left: 3px solid var(--db-red-600);
+  background: var(--db-red-wash);
+}
+
+/* The icon box, sized to one header line and pinned to the top of the row so the
+   glyph centres on the header rather than the whole multi-line body beside it.
+   `align-self: start` keeps it on the first line when the header wraps or a
+   running pill widens the row; centring in a fixed box holds for every kind of
+   mark whatever intrinsic padding its own SVG carries. */
+.live-step-icon {
+  align-self: start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: calc(var(--text-base) * 1.4);
+}
+
+/* The kind glyph. The default icon stroke rather than the action colour: these
+   rows are a record of what happened, and nothing in them is clickable. */
+.live-step-icon > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--db-slate-icon);
+}
+
+.live-step-body {
+  min-width: 0;
+}
+
+.live-step-head {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--text-base);
+  line-height: 1.4;
+}
+
+.live-step-head strong {
+  font-weight: 500;
+}
+
+/* The kind, as the app's neutral chip: the same shape the Gantt gives it, so a
+   step reads the same way live as it does in the run process panel afterwards. No
+   hue per kind — the word is what names it. */
+.live-step-type {
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--db-chip);
+  /* The chip fill is darker than the washes and the secondary grey does not clear
+     it. #445461 does, at 6.58:1. */
+  color: var(--db-grey-blue);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A measurement, so it is mono and tabular: the offsets line up down the list
+   and a digit changing does not shift the ones beside it. */
+.live-step-timing {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+/* The recorded arguments: the Genie question as asked, the SQL as run. Wrapped
+   rather than ellipsised, because the point of the row is to be readable. */
+.live-step-detail {
+  margin: 3px 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.live-step-result {
+  margin: 3px 0 0;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.live-step-result > span {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9px;
+  margin-right: 4px;
+}

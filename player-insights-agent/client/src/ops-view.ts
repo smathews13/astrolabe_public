@@ -1,0 +1,655 @@
+/**
+ * Every claim the Ops tab makes about a number, decided here and drawn in
+ * `OpsPage.tsx`.
+ *
+ * SPLIT FOR THE REASON `monitoring-view.ts` IS SPLIT. The rules this file holds
+ * are the ones that are expensive to get wrong and impossible to check by
+ * looking: whether a figure is a measurement or an apportionment, whether a
+ * blank is a zero or an absence, whether two counts may be added. None of that
+ * is visual, so none of it should need a browser to assert, and this repository
+ * cannot run one.
+ *
+ * THE FOUR RULES EVERY FUNCTION BELOW IS HELD TO.
+ *
+ *  1. A number carries the quality of its own measurement. A cost tile is drawn
+ *     from `{ amount, quality }` and labels itself from the second; nothing here
+ *     takes a bare number and decides afterwards what it means.
+ *  2. Absence is not zero. `null` renders the sentence saying why, never `$0.00`
+ *     and never a dash. This app has already shipped a panel that drew an
+ *     unattributable figure as nothing and a summary counting something other
+ *     than the rows beneath it.
+ *  3. Failures and refusals are never added. They are disjoint by construction,
+ *     and nothing here offers a total of the two.
+ *  4. Every rate names its population. A per-question average that does not say
+ *     what it divided by is a number a reader will use for capacity planning.
+ */
+// The one place a product is paired with its mark. Types only here; this module
+// decides WHICH product a row is about and never how the artwork is drawn.
+import { astPill } from './astrolabe-pill';
+import type { BrandProduct } from './brand-icons';
+import {
+  COST_QUALITY_LABEL,
+  DEPENDENCY_RESULT_LABEL,
+  LATENCY_BASELINE_FLOOR,
+  LATENCY_SLOWER_RATIO,
+  SPAN_PERCENTILE_FLOOR,
+  type CostTile,
+  type DependencyResult,
+  type OpsCostPayload,
+  type OpsLatencyPayload,
+  type RouteLatency,
+  type TelemetryState,
+  type TrafficBar,
+} from '../../shared/ops-contract';
+
+/* ── Money ───────────────────────────────────────────────────────────────── */
+
+/**
+ * A figure in the currency the billing rows named, or the sentence for its
+ * absence.
+ *
+ * The currency is never assumed. `system.billing.list_prices` carries it per
+ * row, so a workspace billed in something other than USD gets its own symbol
+ * rather than a dollar sign in front of a number that is not dollars. With no
+ * currency read, the code is omitted rather than guessed.
+ *
+ * Four decimal places under a cent, because several of these components cost
+ * fractions of one and rounding them to `$0.00` makes a real charge look like
+ * no charge.
+ */
+export function money(amount: number | null, currency: string): string {
+  if (amount === null || !Number.isFinite(amount)) return '';
+  const decimals = Math.abs(amount) > 0 && Math.abs(amount) < 0.01 ? 4 : 2;
+  const figure = amount.toFixed(decimals);
+  return currency ? `${figure} ${currency}` : figure;
+}
+
+/** A whole count with thousands separators, or '' where there is no count. */
+export function count(value: number | null): string {
+  return value === null || !Number.isFinite(value) ? '' : value.toLocaleString('en-US');
+}
+
+/* ── Cost tiles ──────────────────────────────────────────────────────────── */
+
+/**
+ * What a tile shows in place of a figure, and the label saying how good the
+ * figure is.
+ *
+ * `quality` travels on the tile rather than being decided here, which is the
+ * point: this function cannot mislabel a figure, because it does not know
+ * enough to. It only renders what the tile already carries.
+ */
+export interface TileView {
+  /** The component this tile is for. Selects the caption the handoff writes. */
+  id: string;
+  label: string;
+  /** The figure, or '' when there is none. */
+  figure: string;
+  /** The STATE in place of a figure, e.g. 'Not attributable'. '' when there is one. */
+  absence: string;
+  /** 'Real', 'Per token', 'Estimate' or 'Rate'. The word the badge carries. */
+  qualityLabel: string;
+  /**
+   * Whether this card carries the estimate badge.
+   *
+   * THE APPORTIONMENTS ONLY, and only where there is a figure to qualify. The
+   * warehouse and Genie figures are an hour's spend divided across the work in
+   * that hour; the endpoint's is its own recorded tokens and the two rates are
+   * what the platform bills by the day, and a badge on those would say
+   * "estimate" about a measurement. A card with no figure gets none either: a
+   * badge qualifying an absence qualifies nothing.
+   */
+  estimate: boolean;
+  /** What the figure covers, in two or three words. */
+  population: string;
+  /**
+   * Whether `population` is drawn as a badge, because the meter behind the
+   * figure covers more than this deployment.
+   *
+   * THE SHARED METERS ONLY. 'Whole warehouse' and 'Whole workspace' are the
+   * clause that stops a reader taking the Genie figure for this app's spend,
+   * which is a wrong number rather than a missing footnote. The rest are this
+   * endpoint, this app and this job — what a reader assumes already — and a chip
+   * on every card would be the captions again in a smaller font. As with the
+   * estimate badge, an absent figure gets none: there is nothing for the scope to
+   * be the scope of.
+   *
+   * WHICH CARDS THESE ARE IS NOT FIXED. A tile the server could not narrow to
+   * this deployment is relabelled 'Whole workspace' in the response, so the badge
+   * follows the population it was sent rather than the card it is on.
+   */
+  sharedScope: boolean;
+  /** 'in range' or 'per day', so a rate is never read as a total. */
+  basisLabel: string;
+  /** The one thing that would make an absent figure attributable, or ''. */
+  remedy: string;
+  note: string;
+}
+
+/** The words for the two bases. A rate drawn as a total is the whole hazard. */
+export const BASIS_LABEL: Record<CostTile['basis'], string> = {
+  'total-in-range': 'in range',
+  'per-day': 'per day',
+};
+
+export function tileView(tile: CostTile, currency: string): TileView {
+  const figure = money(tile.amount, currency);
+  return {
+    id: tile.id,
+    label: tile.label,
+    figure,
+    // A tile with an amount it could not format is an absence, not a blank.
+    absence: figure ? '' : tile.unavailable || 'Not attributable',
+    qualityLabel: COST_QUALITY_LABEL[tile.quality],
+    estimate: figure !== '' && tile.quality === 'estimate',
+    population: tile.population,
+    sharedScope: figure !== '' && SHARED_POPULATIONS.has(tile.population),
+    basisLabel: BASIS_LABEL[tile.basis],
+    // Only ever beside an absence. A figure that arrived needs nothing set.
+    remedy: figure ? '' : tile.remedy,
+    note: tile.note,
+  };
+}
+
+/*
+ * THERE IS NO CAPTION UNDER A FIGURE ANY MORE, and the line each card used to
+ * carry is worth naming because it was written per component and looked
+ * unremovable: "per-token: from recorded tokens · This endpoint", "estimate:
+ * hourly spend shared across queries by duration · Whole warehouse", and four
+ * more like them. Six cards each holding two lines of prose under a number is a
+ * grid nobody reads to the end of, and the captions wrapped into the card's own
+ * border at the widths the tab is read at.
+ *
+ * What survived is the two facts a reader acts on, as badges rather than
+ * sentences: whether the figure is an apportionment, and whether the meter it
+ * came off covers more than this deployment. Both are drawn in the same pill the
+ * block's own "Experimental" uses. See `estimate` and `sharedScope`.
+ *
+ * THE SCOPE CHIP WENT WITH THE CAPTIONS AND CAME BACK WITHOUT THEM, which is
+ * worth recording because it was cut once as decoration. It is not: with no
+ * "Whole workspace" on it, the Genie figure reads as this app's spend, and a
+ * reader who plans against it has been handed one number for two questions. That
+ * is a wrong number, and it is the one kind of missing context this file exists
+ * to prevent. Cut the sentence, keep the fact.
+ */
+
+/**
+ * The populations that are somebody else's meter as well as ours.
+ *
+ * KEYED ON THE POPULATION AND NOT ON THE COMPONENT, and it was the other way
+ * round for a day. The reason it changed is worth keeping: the server can
+ * RELABEL a tile's population at request time. Where a narrowing id is not
+ * configured, `ops-billing` falls back to the workspace-wide figure and
+ * overrides that tile's population to 'Whole workspace' -- so which cards are
+ * whole-workspace is a property of the response, not of the component list, and
+ * an id-keyed rule left that fallback figure looking like this deployment's own
+ * spend. That is the exact misreading the badge exists to stop.
+ *
+ * The cost of keying on prose is that a reword in the server's table silently
+ * unbadges a card. That is a worse failure than it looks, so the pairing is
+ * asserted from the server's own values rather than from a copy of them, and
+ * anything wider than this deployment belongs in this set on the day it lands.
+ * Keyed on quality it would be worse still: a figure can be apportioned for
+ * reasons other than a shared meter, and the badge would then say something
+ * false about scope rather than nothing at all.
+ */
+const SHARED_POPULATIONS = new Set<string>(['Whole warehouse', 'Whole workspace']);
+
+/*
+ * THERE IS NO HEADLINE VIEW, because there is no per-question average to compose
+ * one for. It formatted "Average per question" over "918.51 USD across 16
+ * questions", and the two rules it was written to satisfy -- say the word
+ * "average", show the denominator -- both held while the figure itself was
+ * meaningless.
+ *
+ * What it divided is mostly billed by TIME. A warehouse and a serving endpoint
+ * charge for the hours they exist, and dividing a range's idle hours by the
+ * sixteen questions somebody happened to ask gives a number that FALLS as the
+ * deployment is used more. A reader doing capacity arithmetic with something
+ * labelled "per question" will do the opposite of what the figure supports, and
+ * at sixteen questions it read as fifty-seven dollars a question.
+ *
+ * The lesson worth keeping: naming a denominator makes an average honest about
+ * its arithmetic, not about its meaning. A rate whose numerator is time and
+ * whose denominator is demand has no honest label, so this one has no figure.
+ * `headline` has since gone from the payload and from the server that computed
+ * it, so there is nothing left for a later pass to find and put back on screen.
+ */
+
+/* ── The cost block's states ─────────────────────────────────────────────── */
+
+/**
+ * A stated absence: what it is, and the one line a reader acts on.
+ *
+ * TITLE AND ONE LINE, AND THERE IS NO SECOND HALF. Every absence here used to
+ * carry three sentences of body and a paragraph of reasoning behind a "Why"
+ * disclosure, and the shape of all of them was the same: how the reading works,
+ * then what to do about it. Only the second was ever read. The first is the
+ * narration this tab has had removed from it repeatedly, and a collapsed
+ * paragraph is still a paragraph somebody has to decide not to open.
+ *
+ * What survives is what a person acts on: the state, the server's own words
+ * where it said something, and a remedy where one exists. A provider's exact
+ * sentence is never shortened; it is the most useful thing on the block.
+ */
+export interface Absence {
+  title: string;
+  body: string;
+}
+
+/**
+ * The heading and sentence for a cost block with no figures.
+ *
+ * `no-grant` AND `no-rows` ARE DIFFERENT and this is the function that keeps
+ * them so. The first is a privilege somebody can grant. The second is a range
+ * billing has not filled yet, which no privilege fixes: usage rows land hours
+ * after the usage, so a range ending today is normally partly empty and that is
+ * the system working. Showing one sentence for both sends an admin to ask for
+ * something they already hold.
+ */
+export function costAbsence(payload: OpsCostPayload): Absence | null {
+  if (payload.state === 'ready') return null;
+  if (payload.state === 'no-grant') {
+    return {
+      title: 'You cannot read the billing tables',
+      body: 'Run the statement below, or ask an account admin to, and refresh.',
+    };
+  }
+  if (payload.state === 'no-rows') {
+    // The one clause that stops the wrong action. Without it an admin reads an
+    // empty block as the missing grant above and goes to ask for a privilege
+    // they already hold.
+    return {
+      title: 'No billing rows for this range yet',
+      body: 'This is not a permission problem and there is nothing to grant.',
+    };
+  }
+  if (payload.state === 'no-warehouse') {
+    return {
+      title: 'No warehouse to read billing with',
+      body: payload.reason || 'No SQL warehouse is configured, so the billing tables cannot be queried.',
+    };
+  }
+  // The reassurance is appended rather than used as a fallback. A read that
+  // failed and a range that cost nothing produce the same empty block, and the
+  // server's own sentence explains the failure without ever saying which of the
+  // two this is. Losing the clause whenever the server had something to say
+  // would drop it in exactly the cases that have the most to explain.
+  const failed = payload.reason || 'The billing query did not come back.';
+  return {
+    title: 'Spend could not be read',
+    // The server's own sentence stays in front of the reader. It is the specific
+    // half of this block, and the clause after it is what stops an empty block
+    // being read as a cheap week.
+    body: `${failed} This is not a figure for zero spend: nothing here was measured.`,
+  };
+}
+
+/* ── Health ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The words for a dependency result, and the tone class beside them.
+ *
+ * THE WORD IS THE STATE AND THE COLOUR IS DECORATION. Every row says
+ * "Answered", "Did not answer" or "Not checked" in text, so the block reads the
+ * same to somebody who cannot distinguish the colours, on a monochrome print,
+ * and to a screen reader. The class only paints what the word already said.
+ *
+ * `not-checked` is a third state rather than a shade of failure. A probe that
+ * did not run has said nothing about the dependency, and drawing that as a fault
+ * sends somebody to investigate a service that is fine.
+ */
+export const RESULT_TONE: Record<DependencyResult, string> = {
+  answered: astPill('pos', 'ops-pill'),
+  'did-not-answer': astPill('neg', 'ops-pill'),
+  'not-checked': astPill('neutral-outline', 'ops-pill'),
+};
+
+export function resultLabel(result: DependencyResult): string {
+  return DEPENDENCY_RESULT_LABEL[result];
+}
+
+/* ── Which product a row or a tile is about ──────────────────────────────── */
+
+/**
+ * The Databricks product behind a dependency probe, or null.
+ *
+ * KEYED ON `kind`, NEVER ON `id` OR ON THE LABEL. The ids vary with what a
+ * deployment configures and the labels are the probe's own prose; the kind is on
+ * the wire precisely because it is the stable one, and the Serving endpoint pill
+ * has twice been keyed to a literal id and twice reported a healthy endpoint as
+ * unchecked when that id was not among the rows. A mark keyed the same way would
+ * fail the same way, more quietly: a missing icon looks like a design choice.
+ *
+ * Null is a real answer and its caller draws nothing. A mark is a claim about
+ * which product a reader is looking at, and the wrong one on a row that is
+ * failing sends them to the wrong service's console.
+ */
+export function productForProbe(kind: string): BrandProduct | null {
+  return PROBE_PRODUCTS[kind] ?? null;
+}
+
+const PROBE_PRODUCTS: Record<string, BrandProduct> = {
+  'sql-warehouse': 'databricks-sql',
+  'genie-space': 'genie',
+  // The served model and the semantic index are both Mosaic AI, which is the
+  // handoff's pairing and the console's.
+  'serving-endpoint': 'mosaic-ai',
+  'vector-index': 'mosaic-ai',
+  'vector-endpoint': 'mosaic-ai',
+  // The three governed-object probes. One product, three grains.
+  catalog: 'unity-catalog',
+  schema: 'unity-catalog',
+  table: 'unity-catalog',
+};
+
+/**
+ * The product behind a cost tile, or null.
+ *
+ * ONE OF THE SIX HAS NO MARK, and that is the handoff's own instruction. The
+ * index rebuild job is a Lakeflow job, which has no product mark in the set. An
+ * approximate mark on it would be the block naming a product that is not what
+ * the figure is for.
+ */
+export function productForCostTile(id: string): BrandProduct | null {
+  return COST_TILE_PRODUCTS[id] ?? null;
+}
+
+const COST_TILE_PRODUCTS: Record<string, BrandProduct> = {
+  'serving-endpoint': 'mosaic-ai',
+  'vector-search': 'mosaic-ai',
+  'sql-warehouse': 'databricks-sql',
+  genie: 'genie',
+  'app-compute': 'apps',
+};
+
+/*
+ * Whether the app itself was up is the platform's reading and not this app's,
+ * and the block says so by LINKING to the platform record rather than by
+ * carrying two sentences about why it cannot compute one. The link is named
+ * "App availability in Databricks", which is the whole of what the sentences
+ * said, and it is a thing a reader can click instead of a thing they have to
+ * finish reading.
+ */
+
+/**
+ * What the telemetry half of Health says, in each of its states.
+ *
+ * FOUR OF THE FIVE ARE ORDINARY. Off is the default and the customer case:
+ * ingestion is billed, so a deployment that has not opted in has no tables and
+ * no charge, and that is a correct configuration rather than a fault. The block
+ * says which one it is in and what would change it, and never renders an empty
+ * chart in place of an explanation.
+ *
+ * 'unreadable' IS THE ONE THAT IS A FAULT, and it is kept apart from
+ * 'no-rows-yet' for the reason `costAbsence` keeps them apart: a read that did
+ * not come back has said nothing about whether the table is empty, and titling
+ * it "no history yet" sends somebody to look at ingestion instead of at the
+ * error the platform handed back.
+ */
+export function telemetryNotice(
+  state: TelemetryState,
+  input: { variable: string; table: string; reason: string }
+): Absence | null {
+  if (state === 'reading') return null;
+  if (state === 'not-enabled') {
+    return {
+      title: 'App telemetry is off',
+      body: `Nothing sets ${input.variable}, so nothing is written and nothing is charged for it.`,
+    };
+  }
+  if (state === 'no-grant') {
+    return {
+      title: 'You cannot read the telemetry table',
+      body: `No SELECT on ${input.table}. Run the statement below, or ask whoever owns that schema to, and refresh.`,
+    };
+  }
+  if (state === 'unreadable') {
+    return {
+      title: 'Telemetry could not be read',
+      // The platform's own sentence stays in front of the reader, for the reason
+      // it does on the cost block: it is the specific half, and the clause after
+      // it is what stops an empty panel being read as a quiet week.
+      body:
+        `${input.reason || `The query against ${input.table} did not come back.`} ` +
+        'This is not a reading of no activity: nothing here was measured.',
+    };
+  }
+  return {
+    title: 'No telemetry history yet',
+    // Telemetry does not backfill, so an empty table is expected rather than a
+    // sign that nothing was served. That is the one clause worth a reader's
+    // time, and it is a clause rather than the paragraph it used to be.
+    body: input.reason || `${input.table} is readable and holds nothing yet. Telemetry does not backfill.`,
+  };
+}
+
+/* ── Traffic ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Bar widths as percentages of the largest bar in the SAME chart.
+ *
+ * Per chart rather than across the page, and this is the reason failures and
+ * refusals are two charts rather than one. Scaled together, a deployment with
+ * many refusals and two failures draws the failures as slivers, which reads as
+ * "almost nothing" about the one number an operator most wants to see. Each
+ * chart naming its own maximum is what lets the two be compared honestly, by
+ * reading them, rather than dishonestly, by their lengths.
+ *
+ * An empty chart returns an empty array. It never returns a bar of length zero,
+ * because a drawn bar is a claim that there is something to draw.
+ */
+export function bars(series: TrafficBar[]): Array<TrafficBar & { percent: number }> {
+  const largest = series.reduce((high, bar) => Math.max(high, bar.count), 0);
+  if (largest <= 0) return [];
+  return series.map((bar) => ({ ...bar, percent: Math.round((bar.count / largest) * 100) }));
+}
+
+/**
+ * The caption under a traffic chart, naming what it counted.
+ *
+ * NEVER A COMBINED TOTAL. Refusals and failures are disjoint, so a sum is
+ * arithmetically fine and semantically wrong: a refusal is the app working
+ * correctly and telling somebody they may not read something, and a failure is
+ * the app not working. Added together they make a "problems" figure that an
+ * operator will chase, and most of it is the access controls doing their job.
+ */
+export function trafficCaption(series: TrafficBar[], singular: string, plural: string, runs: number): string {
+  const total = series.reduce((sum, bar) => sum + bar.count, 0);
+  /*
+   * TWO WORDS FOR AN EMPTY CHART, not a sentence, and no denominator.
+   *
+   * Failures and refusals are stacked and both are usually empty, so the sentence
+   * this used to return was rendered twice within a couple of centimetres of
+   * itself: "No failures in this range, out of 16 runs that ended in it." then
+   * "No refusals in this range, out of 16 runs that ended in it." The only word
+   * that differed was the noun, and the run count it repeated is in the band at
+   * the top of the block, once, where it governs all three charts.
+   */
+  if (total === 0) return `No ${plural}`;
+  const noun = total === 1 ? singular : plural;
+  return runs > 0
+    ? `${count(total)} ${noun} out of ${count(runs)} runs that ended in this range.`
+    : `${count(total)} ${noun} in this range.`;
+}
+
+/* ── Latency ─────────────────────────────────────────────────────────────── */
+
+/**
+ * A duration at the scale it was measured at.
+ *
+ * THREE SCALES, BECAUSE THIS BLOCK SPANS FIVE ORDERS OF MAGNITUDE. The routes
+ * measured here run from under a millisecond to over two minutes, and
+ * Monitoring's one-decimal-seconds form prints most of them as `0.0s`. A column
+ * of `0.0s` is a column of zeroes, which this tab does not print, and worse it
+ * reads as a measurement of nothing rather than as a fast route.
+ *
+ * Never rounds a real duration down to a bare zero: a sub-millisecond span
+ * keeps its decimal.
+ */
+export function latencyFigure(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms) || ms < 0) return '';
+  if (ms < 10) return `${ms.toFixed(1)}ms`;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 90_000) return `${(ms / 1000).toFixed(1)}s`;
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+/*
+ * THE BLOCK NO LONGER PRINTS THE WINDOW ITS SPANS COVER, and it is worth saying
+ * what that was and what it cost, because it was not decoration: "Spans recorded
+ * 2026-08-16 19:31 to 2026-08-17 18:07" said that this one block is NOT bounded
+ * by the range chip at the top of the page, since telemetry does not backfill and
+ * the table reaches back hours where the range reaches back days.
+ *
+ * Two timestamps to the minute is a lot of head-band for a fact that changes
+ * nothing a reader does with a percentile, and `coveredFrom` and `coveredTo` are
+ * still on the payload for whatever says it next. What is lost is that a reader
+ * comparing this block against Traffic has nothing on screen telling them the two
+ * are over different windows.
+ */
+
+/**
+ * Why the latency block has no figures, when it has none.
+ *
+ * The same four-way split the cost block makes, and for the same reason: an
+ * unreadable table, a missing grant, a table with nothing in it and a
+ * deployment with telemetry switched off are four different things to do next.
+ * Returns null when there are figures, so a caller cannot draw both.
+ */
+export function latencyAbsence(payload: OpsLatencyPayload): Absence | null {
+  if (payload.state === 'ready' && payload.routes.length > 0) return null;
+  return {
+    title:
+      payload.state === 'no-grant' || payload.state === 'unreadable' || payload.state === 'no-warehouse'
+        ? 'Latency could not be read'
+        : 'No timings recorded',
+    body: payload.reason,
+  };
+}
+
+/**
+ * What a withheld 95th prints as.
+ *
+ * A MARK, NEVER A NUMBER. Under the floor there is no percentile to show, and
+ * every candidate substitute -- a zero, the median repeated, the slowest span
+ * unlabelled -- is a figure a reader would compare against a real percentile
+ * computed over hundreds. The explanation rides on the cell's `title` rather
+ * than the page, because this block prints figures and not prose.
+ */
+export const WITHHELD = '\u2014';
+
+/** Said to a screen reader and on hover, where a mark alone would not carry. */
+export function withheldReason(spans: number): string {
+  return `Withheld: ${spans} spans is under the ${SPAN_PERCENTILE_FLOOR} needed for a high percentile. The slowest span is labelled beside it.`;
+}
+
+/**
+ * How a route compares to its own prior-half median.
+ *
+ * Relative baseline, never a fixed budget. Thin on either half, or a missing
+ * prior period, produces no flag: a red mark on three spans trains people to
+ * ignore red marks.
+ */
+export type LatencyVerdict = 'slower' | 'within' | 'too-thin' | 'not-reported';
+
+export interface LatencyRouteView {
+  verdict: LatencyVerdict;
+  /** Word on the row. Never colour alone. */
+  verdictLabel: string;
+  /** Why, naming both populations. '' when within range. */
+  verdictDetail: string;
+  /** Error count with its population, or '' when zero (zero counts never render). */
+  errorsLabel: string;
+  /** Always "Not reported" today: refusals are not on the span. */
+  refusalsLabel: string;
+  /** Relative freshness, or "Not reported" when the warehouse sent no time. */
+  freshLabel: string;
+}
+
+/**
+ * Split a route name so a UUID tail does not widen the table.
+ *
+ * Method stays on the first line; a trailing UUID (or similarly opaque id) drops
+ * onto a second line rather than being clipped mid-phrase.
+ */
+export function splitRouteLabel(route: string): { head: string; tail: string } {
+  const match = route.match(/^(.*?\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  if (match) return { head: match[1].replace(/\/$/, ''), tail: match[2] };
+  const parts = route.split(' ');
+  if (parts.length >= 2 && parts[0] === parts[0].toUpperCase() && parts[0].length <= 7) {
+    return { head: parts[0], tail: parts.slice(1).join(' ') };
+  }
+  return { head: route, tail: '' };
+}
+
+export function latencyRouteView(route: RouteLatency, nowMs: number = Date.now()): LatencyRouteView {
+  const refusalsLabel = 'Not reported';
+  const errorsLabel =
+    route.errorCount > 0 ? `${count(route.errorCount)} of ${count(route.spans)} spans` : '';
+  const freshLabel = freshAgo(route.lastSpanAt, nowMs);
+
+  if (route.spans < LATENCY_BASELINE_FLOOR || route.priorSpans < LATENCY_BASELINE_FLOOR) {
+    return {
+      verdict: 'too-thin',
+      verdictLabel: 'Too thin to judge',
+      verdictDetail:
+        `Needs ${LATENCY_BASELINE_FLOOR} spans in each half of the covered window ` +
+        `(this half ${count(route.spans)}, prior half ${count(route.priorSpans)}).`,
+      errorsLabel,
+      refusalsLabel,
+      freshLabel,
+    };
+  }
+
+  if (route.priorP50Ms === null || route.priorP50Ms <= 0) {
+    return {
+      verdict: 'not-reported',
+      verdictLabel: 'Not reported',
+      verdictDetail: 'No prior-half median to compare against.',
+      errorsLabel,
+      refusalsLabel,
+      freshLabel,
+    };
+  }
+
+  if (route.p50Ms >= route.priorP50Ms * LATENCY_SLOWER_RATIO) {
+    const ratio = route.priorP50Ms > 0 ? route.p50Ms / route.priorP50Ms : 0;
+    return {
+      verdict: 'slower',
+      verdictLabel: 'Slower than baseline',
+      verdictDetail:
+        `Current-half p50 is ${ratio.toFixed(1)}× the prior-half p50 ` +
+        `(${count(route.spans)} vs ${count(route.priorSpans)} spans).`,
+      errorsLabel,
+      refusalsLabel,
+      freshLabel,
+    };
+  }
+
+  return {
+    verdict: 'within',
+    verdictLabel: 'Within range',
+    verdictDetail: '',
+    errorsLabel,
+    refusalsLabel,
+    freshLabel,
+  };
+}
+
+/** Relative age of the last span, or "Not reported" when nothing was timed. */
+function freshAgo(at: string, nowMs: number): string {
+  if (!at) return 'Not reported';
+  const then = Date.parse(at.includes('T') ? at : at.replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(then)) return 'Not reported';
+  const minutes = Math.max(0, Math.round((nowMs - then) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 min ago';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return '1 hr ago';
+  if (hours < 48) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+}

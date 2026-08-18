@@ -1,0 +1,29 @@
+.DS_Store
+node_modules/
+client/dist/
+dist/
+build/
+.env
+.databricks/
+.smoke-test/
+test-results/
+playwright-report/
+playwright-report-wizard/
+.ui-test-artifacts/
+
+# Auto-generated types (endpoint-specific, varies per developer)
+shared/appkit-types/serving.d.ts
+
+# --- Committed deploy tree, for Databricks Apps "From Git" UI deploy ----------
+# build/ is ignored above, but build/deploy is the ONE exception: it is the
+# dependency-free esbuild output (no package.json, so the platform skips
+# npm install) and it is committed on purpose so the app can be deployed
+# straight from Git in the browser, Source code path = build/deploy. Nothing
+# else under build/ is tracked. The negations must re-include every level,
+# because dist/ and client/dist/ above would otherwise re-exclude the client
+# assets inside the tree. Rebuild with `npm run build:deploy` and recommit to
+# update it.
+!build/
+build/*
+!build/deploy/
+!build/deploy/**

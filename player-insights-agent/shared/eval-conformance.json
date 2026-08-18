@@ -1,0 +1,296 @@
+{
+  "$comment": [
+    "The conformance fixture. Neither implementation owns it.",
+    "",
+    "There are two implementations of the scorer set: agent/eval/scorers.py, which is what",
+    "MLflow evaluation and production monitoring register, and shared/answer-scorers.ts, which",
+    "is what the Benchmark Lab's runner executes. That duplication is forced -- the only path",
+    "in this product that reaches the agent as the signed-in caller is Node, and the only place",
+    "MLflow can register a scorer is Python -- and it is a real risk rather than a tidy one: a",
+    "scorer that means something slightly different in production than it did in development",
+    "produces a regression signal nobody can act on, because the first question is always",
+    "whether the agent changed or the scorer did.",
+    "",
+    "So both sides read this file and assert the same verdicts against it. A change to one",
+    "implementation that the other does not match fails on both sides, naming the scorer and",
+    "the case. Add a case here when a scorer's behaviour is worth pinning; do not add one that",
+    "only one side can satisfy.",
+    "",
+    "`expect` names the scorer and the verdict. `null` means the scorer must abstain, which is",
+    "asserted as strictly as a value: an abstention that quietly became a pass is the failure",
+    "this whole set is built to prevent.",
+    "",
+    "`only` marks a case one implementation is not held to. There is exactly one scorer that",
+    "legitimately differs -- sql_validity, where Python asks the runtime policy through a parser",
+    "and Node asserts the guarantees that policy already enforced -- and the point of writing the",
+    "divergence down here is that it is now a fact of the fixture rather than a surprise in a",
+    "run. Do not reach for `only` to make a failing case pass. If a verdict differs for any",
+    "reason other than the one recorded on `sqlValidity`, the implementations have drifted."
+  ],
+  "cases": [
+    {
+      "name": "a fully-attributed aggregate answer",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Revenue rose.",
+          "narrative": "Across the window, revenue rose.",
+          "sql": "SELECT title_code, sum(net_bookings_usd) FROM cat.sch.silver_purchases GROUP BY title_code",
+          "figures": [{ "label": "Revenue", "display": "$1", "comparison": "up" }],
+          "sources": [{ "name": "cat.sch.silver_purchases", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 4200, "toolCalls": 3, "stages": [], "genie_spaces": [{ "id": "s1" }], "total_tokens": 900 }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true },
+        "semantic_layer_tables": ["cat.sch.silver_purchases"]
+      },
+      "expectations": { "expected_routes": ["genie"], "expected_entities": ["silver_purchases"] },
+      "expect": {
+        "sql_validity": true,
+        "provenance_completeness": true,
+        "tool_selection": true,
+        "semantic_recall": true,
+        "stale_index": true,
+        "identity_execution_mode": true,
+        "coverage_caveat": null,
+        "latency_ms": 4200,
+        "total_tokens": 900,
+        "warehouse_calls": 2,
+        "error_rate": 0
+      }
+    },
+    {
+      "name": "a definitional answer, which legitimately has no SQL and no figures",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "A session is one row of the activity table.",
+          "narrative": "The dictionary records the grain.",
+          "sql": "",
+          "figures": [],
+          "sources": [{ "name": "cat.sch.data_dictionary", "freshness": "today", "role": "reference" }],
+          "caveats": [],
+          "trace": { "totalMs": 900, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": { "expected_routes": ["dictionary"], "expected_entities": ["data_dictionary"] },
+      "expect": {
+        "sql_validity": null,
+        "provenance_completeness": true,
+        "tool_selection": true,
+        "semantic_recall": true,
+        "stale_index": null,
+        "identity_execution_mode": true,
+        "warehouse_calls": 0,
+        "total_tokens": null,
+        "error_rate": 0
+      }
+    },
+    {
+      "name": "a source with no stated role, which is what makes attribution incomplete",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Counts by title.",
+          "narrative": "Counts by title.",
+          "sql": "SELECT 1 FROM cat.sch.gold_title_daily_summary",
+          "figures": [{ "label": "Players", "display": "10", "comparison": "flat" }],
+          "sources": [{ "name": "cat.sch.gold_title_daily_summary", "freshness": "today" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "provenance_completeness": false, "tool_selection": null, "semantic_recall": null }
+    },
+    {
+      "name": "a bare projection of a restricted column, which the runtime refuses and only the parser can see",
+      "only": "python",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Top spenders.",
+          "narrative": "Top spenders.",
+          "sql": "SELECT crm_customer_ref FROM cat.sch.silver_player_profiles",
+          "figures": [],
+          "sources": [{ "name": "cat.sch.silver_player_profiles", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "sql_validity": false }
+    },
+    {
+      "name": "a counting aggregate over a restricted column, which is the product working and must not fail",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Players by title.",
+          "narrative": "Players by title.",
+          "sql": "SELECT title_code, count(DISTINCT player_id) FROM cat.sch.silver_gameplay_activity GROUP BY title_code",
+          "figures": [{ "label": "Players", "display": "10", "comparison": "flat" }],
+          "sources": [{ "name": "cat.sch.silver_gameplay_activity", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "sql_validity": true }
+    },
+    {
+      "name": "a Genie statement that is not fully qualified, a rule Genie was never held to",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Counts.",
+          "narrative": "Counts.",
+          "sql": "SELECT count(*) FROM silver_gameplay_activity",
+          "figures": [],
+          "sources": [{ "name": "cat.sch.silver_gameplay_activity", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [], "genie_spaces": [{ "id": "s1" }] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "sql_validity": true }
+    },
+    {
+      "name": "a statement of the agent's own whose table is not fully qualified",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Counts.",
+          "narrative": "Counts.",
+          "sql": "SELECT count(*) FROM silver_gameplay_activity",
+          "figures": [],
+          "sources": [{ "name": "silver_gameplay_activity", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "sql_validity": false }
+    },
+    {
+      "name": "a case with a known coverage gap that the answer disclosed",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Split by cohort.",
+          "narrative": "Split by cohort.",
+          "sql": "SELECT 1 FROM cat.sch.silver_gameplay_activity",
+          "figures": [{ "label": "New", "display": "5", "comparison": "up" }],
+          "sources": [{ "name": "cat.sch.silver_gameplay_activity", "freshness": "today", "role": "measure" }],
+          "caveats": ["New is defined as a first session inside the window."],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": { "expects_caveat": true },
+      "expect": { "coverage_caveat": true }
+    },
+    {
+      "name": "the same case with the gap undisclosed",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Split by cohort.",
+          "narrative": "Split by cohort.",
+          "sql": "SELECT 1 FROM cat.sch.silver_gameplay_activity",
+          "figures": [{ "label": "New", "display": "5", "comparison": "up" }],
+          "sources": [{ "name": "cat.sch.silver_gameplay_activity", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": { "expects_caveat": true },
+      "expect": { "coverage_caveat": false }
+    },
+    {
+      "name": "a refusal, which is a correct outcome and must not count as an error",
+      "envelope": {
+        "type": "refusal",
+        "code": "RESTRICTED_COLUMN",
+        "message": "That column is withheld.",
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": { "is_refusal": true, "expected_routes": ["none"] },
+      "expect": {
+        "error_rate": 0,
+        "sql_validity": null,
+        "provenance_completeness": null,
+        "tool_selection": true,
+        "semantic_recall": null,
+        "stale_index": null,
+        "warehouse_calls": null,
+        "latency_ms": null,
+        "identity_execution_mode": true
+      }
+    },
+    {
+      "name": "a run stopped at the identity gate, which is an error and is not the agent's answer",
+      "envelope": {
+        "type": "unavailable",
+        "code": "IDENTITY_REQUIRED",
+        "execution_identity": { "mode": "app_service_principal", "verified": false }
+      },
+      "expectations": {},
+      "expect": { "error_rate": 1, "identity_execution_mode": false }
+    },
+    {
+      "name": "a clarification, which is an outcome of a turn rather than a failure of one",
+      "envelope": {
+        "type": "clarification",
+        "question": "Which titles did you mean?",
+        "execution_identity": { "mode": "signed_in_user", "verified": true }
+      },
+      "expectations": {},
+      "expect": { "error_rate": 0, "latency_ms": null }
+    },
+    {
+      "name": "an answer produced under the app's own principal rather than a caller's",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Counts.",
+          "narrative": "Counts.",
+          "sql": "SELECT 1 FROM cat.sch.gold_title_daily_summary",
+          "figures": [],
+          "sources": [{ "name": "cat.sch.gold_title_daily_summary", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [], "total_tokens": 0 }
+        },
+        "execution_identity": { "mode": "app_service_principal", "verified": false }
+      },
+      "expectations": {},
+      "expect": { "identity_execution_mode": false, "total_tokens": 0 }
+    },
+    {
+      "name": "a run whose named table the semantic index does not describe",
+      "envelope": {
+        "type": "answer",
+        "answer": {
+          "takeaway": "Counts.",
+          "narrative": "Counts.",
+          "sql": "SELECT 1 FROM cat.sch.some_new_table",
+          "figures": [],
+          "sources": [{ "name": "cat.sch.some_new_table", "freshness": "today", "role": "measure" }],
+          "caveats": [],
+          "trace": { "totalMs": 100, "toolCalls": 1, "stages": [] }
+        },
+        "execution_identity": { "mode": "signed_in_user", "verified": true },
+        "semantic_layer_tables": ["cat.sch.gold_title_daily_summary"]
+      },
+      "expectations": {},
+      "expect": { "stale_index": false }
+    }
+  ]
+}

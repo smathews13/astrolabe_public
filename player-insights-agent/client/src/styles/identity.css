@@ -1,0 +1,74 @@
+/* ── Identity and permissions, on the Connections page ──────────────────────
+ *
+ * Now the only place the pair is printed: the status strip that used to stand
+ * above every page and abbreviate towards this is gone, along with its
+ * `.access-badge*` rules. Two principals side by side where there is room and
+ * stacked where there is not, because the whole point of the pair is that they
+ * are different and a reader has to be able to compare them.
+ */
+.identity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.identity-row-label {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.identity-row-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+/* The identifier is printed whole here on purpose, so it has to be able to
+   break: a uuid in a 260px column with nothing to wrap on would otherwise
+   widen the grid track and push the second principal onto its own row. */
+.identity-row-value code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.identity-row-kind {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--db-line);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+/* An absence with a reason, which is not the same as a blank and must not look
+   like one. Italic rather than coloured so it survives a repaint. */
+.identity-row-missing {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted-foreground);
+}
+
+.identity-row-what {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* The verification account, which used to be a paragraph in the banner over
+   every page. Given a rule down its side so it reads as a quoted record rather
+   than as prose the page is asserting in its own voice. */
+.identity-permissions {
+  padding-left: 12px;
+  border-left: 2px solid var(--db-line);
+}
+
+.identity-permissions p {
+  margin: 0;
+}
+

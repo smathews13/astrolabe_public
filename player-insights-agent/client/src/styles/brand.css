@@ -1,0 +1,55 @@
+/*
+ * The Databricks product marks: geometry, and deliberately nothing else.
+ *
+ * There is no `fill`, no `stroke` and no `color` in this file, and that is a
+ * rule rather than an omission. Each mark is published in its own official ink
+ * -- the two-colour pair #FF5F46 and #FABFBA on the six icons, black on the
+ * MLflow wordmark -- and restaining one to match its neighbours is the same
+ * liberty as redrawing it. A row of these is meant to be a row of logos, not one
+ * flat grey. See assets/brand/README.md.
+ *
+ * The size arrives as --brand-icon-size from the component, which takes it from
+ * the handoff's four sizes and cannot be handed a fifth. It is a custom property
+ * rather than an inline width so that a page partial can still override the
+ * geometry with a class, which an inline style would outrank.
+ */
+.brand-icon {
+  /* `flex: none` because nearly every seating is a flex row -- a table row, a
+     chip, an architecture node header -- and a mark that shrinks to give a long
+     table name its width is the mark disappearing on exactly the rows that are
+     hardest to read. */
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--brand-icon-size, 16px);
+  height: var(--brand-icon-size, 16px);
+}
+
+/*
+ * The published file arrives with its own width and height attributes -- 512 on
+ * the icons -- and this is what overrides them. Percentages against the span
+ * above rather than a repeat of the number, so the size is stated once.
+ *
+ * `display: block` kills the inline baseline gap under the drawing, which at
+ * 14px inside a 22px chip is enough to sit the mark visibly low in it.
+ */
+.brand-icon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * MLflow is a word, not a square.
+ *
+ * It is published 954x408, so a box would either squash it to a fifth of its
+ * length or crop the flow off the end of it. The size becomes a HEIGHT and the
+ * width follows from the viewBox, which is why the span has to stop declaring
+ * one: `width: auto` on a flex item is its content's width, and the content is
+ * an SVG that now sizes itself from its own aspect.
+ */
+.brand-icon.wordmark,
+.brand-icon.wordmark > svg {
+  width: auto;
+}

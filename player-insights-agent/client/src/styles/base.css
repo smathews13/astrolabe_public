@@ -1,0 +1,40 @@
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  /* The page was two soft radial pools over a diagonal gradient, so that a screen
+     with no controls on it still had some depth. DuBois gets its depth from
+     hairlines and from the wash on panel heads instead, and a gradient underneath
+     is what made every card above it want to be translucent. Flat white, and the
+     cards that sit on it are solid. */
+  background: var(--background);
+  color: var(--foreground);
+  /* Both stated for the first time. The app has always drawn in DM Sans by
+     inheritance from AppKit's own base layer and at whatever size that layer
+     chose; 13px is the design's body size and this is the only place it is set. */
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+svg {
+  flex: none;
+}
+/*
+ * Keyboard focus is an action, so it is blue, and it is the same blue everywhere.
+ * AppKit draws its own ring from --ring at partial alpha, which on a white shell was
+ * faint enough to lose; this states the ring outright, solid, which is also what the
+ * handoff asks for. #2272B4 measures 5.08:1 on white, comfortably past the 3:1 a
+ * focus indicator has to clear, and it is the same colour as the thing being focused
+ * would use if it were pressed.
+ */
+:focus-visible {
+  outline: 2px solid var(--db-blue-600);
+  outline-offset: 2px;
+}

@@ -1,0 +1,367 @@
+/*
+ * The astrolabe loading suite's keyframes, copied from the design reference.
+ *
+ * Source: docs/design-handoff-astrolabe/Databricks App UI.dc.html, the twelve
+ * `@keyframes ast-*` rules in its style block, specified by
+ * astrolabe-rebuild-spec.md §5 and seated by loading-suite.md and
+ * loading-animation.md.
+ *
+ * THE VALUES ARE VERBATIM AND HAVE TO STAY THAT WAY. Every percentage, every
+ * easing stop and both translate distances are the reference's own. A paraphrase
+ * of a timing function is a different animation, and these are not approximations
+ * of an idea -- ast-pop's 1.25 overshoot at 12%, ast-concept's 2.5% rise,
+ * ast-dot-run's colour handover between 46% and 54% -- they were drawn, and the
+ * numbers are the drawing. astrolabe-keyframes.test.ts reads the reference off
+ * disk and fails if any declaration in this file differs from it, so a well-meant
+ * tidy-up of a percentage does not get through.
+ *
+ * Only the whitespace differs: the reference has them minified on one line each
+ * and prettier formats them out. The test normalises whitespace and compares the
+ * declarations, which is the comparison that means anything.
+ *
+ * The two colour literals in ast-dot-run and ast-dot-run-sm are verbatim for the
+ * same reason. Both are palette values -- #2272B4 is --db-blue-600 and
+ * --ast-blue, #6FAEDD is --ast-blue-light -- checked rather than assumed, so
+ * neither is a colour written past the token block even though it is written as a
+ * hex.
+ *
+ * NOTHING IN THIS APP USES ANY OF THEM YET. The loaders that will are per-surface
+ * work on files other people are editing. What lands here is the vocabulary and
+ * the accessibility floor under it.
+ *
+ * ---- The accessibility rules, which are not optional ----
+ *
+ * All of this motion is decorative. §5 states three things about it and all three
+ * are conditions on the markup rather than on this file:
+ *
+ *   1. Every animated element is aria-hidden. A spinning mark, a drawn connector,
+ *      a popping star and a running dot say nothing a screen reader can use, and
+ *      twelve of them narrating at once say less than nothing.
+ *   2. Exactly ONE aria-live="polite" status string per loader carries the
+ *      meaning: "Connecting your answer, step 4 of 9". One, because a second live
+ *      region interrupts the first.
+ *   3. prefers-reduced-motion: reduce freezes ALL of it. See the guard at the
+ *      bottom, which is the half of that this file can enforce.
+ *
+ * A rule cannot see whether its element has aria-hidden on it, so 1 and 2 belong
+ * to the tests of the components that seat these -- the way working-animation.test.ts
+ * already does it for the animation the app has today.
+ */
+
+/*
+ * The running dots on the progress rail, and the same animation at the narrower
+ * seating. The two differ only in the distance travelled, 203px against 110px,
+ * which is the width of the rail each one runs along; that is why they are two
+ * keyframes rather than one with a custom property, and why neither distance may
+ * be rounded.
+ *
+ * The colour handover is the point of the animation: a dot leaves as the action
+ * blue and arrives as its lighter form, so a rail of them reads as movement in one
+ * direction even when a single dot is caught still.
+ */
+@keyframes ast-dot-run {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+    background: #2272b4;
+  }
+  6% {
+    opacity: 1;
+  }
+  46% {
+    background: #2272b4;
+  }
+  54% {
+    background: #6faedd;
+  }
+  94% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(203px);
+    opacity: 0;
+    background: #6faedd;
+  }
+}
+
+@keyframes ast-dot-run-sm {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+    background: #2272b4;
+  }
+  6% {
+    opacity: 1;
+  }
+  46% {
+    background: #2272b4;
+  }
+  54% {
+    background: #6faedd;
+  }
+  94% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(110px);
+    opacity: 0;
+    background: #6faedd;
+  }
+}
+
+/* The mark's rotation, and the counter-rotation the reticle ring runs at so the
+   two rings do not read as one solid object turning. */
+@keyframes ast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ast-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* A constellation star, breathing. 0.45 rather than 0 at the trough: a star that
+   goes out has left the constellation. */
+@keyframes ast-star-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* The mark's centre dot, which scales rather than fades, so it reads as the one
+   thing at rest in a scene where everything else is moving. */
+@keyframes ast-center-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+/*
+ * A connector line drawing itself between two stars. Driven by stroke-dashoffset,
+ * so the element it is applied to needs `stroke-dasharray: 1` and
+ * `pathLength="1"` -- the offset runs 1 to 0 in normalised units rather than in
+ * user units, which is what makes one keyframe work for lines of every length.
+ */
+@keyframes ast-draw {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  55% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* A star arriving as its connector reaches it: overshoots to 1.25, settles at 1,
+   holds from 18% to 82%, then leaves smaller than it arrived. */
+@keyframes ast-pop {
+  0%,
+  4% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  18%,
+  82% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+/* One of the four mark concepts, in the concept-flicker slot. Rises fast, holds to
+   13%, gone by 16%, and absent for the rest of the cycle while its three siblings
+   take their turns on staggered delays. */
+@keyframes ast-concept {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  2.5% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  13% {
+    opacity: 1;
+  }
+  16% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The wordmark under the flickering mark: in at 6%, held for most of the cycle,
+   out by 64%, so it is present while the marks change and gone before the scene
+   resolves. */
+@keyframes ast-hold {
+  0%,
+  3% {
+    opacity: 0;
+  }
+  6%,
+  58% {
+    opacity: 1;
+  }
+  64%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The flicker itself: a quarter-cycle on, three quarters off. Four elements with
+   this and four staggered delays make one slot that changes what it is. */
+@keyframes ast-flick {
+  0% {
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+  }
+  28% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The login gate arriving after the opening sequence. Nothing happens for the
+   first 60% -- that is the sequence playing -- then the gate rises 24px into
+   place and holds. */
+@keyframes ast-gate-in {
+  0%,
+  60% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  94% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * ---- The freeze ----
+ *
+ * §5: prefers-reduced-motion: reduce must freeze all of it, and "all" is the word
+ * that matters.
+ *
+ * The guard runs ahead of the animations it guards, deliberately. This file
+ * declares no `.ast-anim-*` rule of its own, because a duration is a property of a
+ * seating rather than of a keyframe -- the concept flicker is 0.8s a mark on a 3.2s
+ * cycle, the constellation connect is an 8s loop on a ~0.7s stagger, and both are
+ * specified per surface in loading-suite.md. The classes are the next lane's to
+ * write.
+ *
+ * What is settled here is the name they must use. Any element carrying one of these
+ * animations gets a class prefixed `ast-anim-`, and the attribute selector below
+ * then covers it the day it is written rather than the day somebody remembers to
+ * come back here. A guard that has to be extended per animation is a guard that is
+ * one animation out of date for most of its life.
+ *
+ * FREEZING IS NOT HIDING, and getting that backwards is the specific way a
+ * reduced-motion guard fails. Four of these animations begin at opacity 0 or a
+ * stroke fully dashed out, because they animate INTO existence. `animation: none`
+ * alone would leave every one of them in its first frame, which is invisible: a
+ * user who asked for less motion would get an empty panel instead of a still one.
+ * So each is also given the resting state it holds during its own animation.
+ *
+ * The two flicker slots cannot be resolved from here, and that is a per-surface
+ * job rather than an omission. A slot stacks four marks and shows one at a time;
+ * frozen, all four would be on top of each other, and CSS cannot choose which one
+ * the still frame should be. The convention is `data-ast-rest` on the one that is:
+ * the guard shows it and hides its siblings, and a slot that forgets to mark one
+ * renders nothing, which fails visibly rather than showing four marks in a pile.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [class*='ast-anim-'] {
+    animation: none !important;
+  }
+
+  /* The connector line, drawn rather than mid-draw. */
+  .ast-anim-draw {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+
+  /* The things that scale or rise into place, at rest and at full size. */
+  .ast-anim-pop,
+  .ast-anim-hold,
+  .ast-anim-gate-in,
+  .ast-anim-star-pulse,
+  .ast-anim-center-pulse {
+    opacity: 1;
+    transform: none;
+  }
+
+  /*
+   * `.ast-anim-concept` IS DELIBERATELY NOT IN THAT LIST, and this note is here so
+   * nobody adds it as a fix. It is the opening sequence's centre, and under this
+   * preference the sequence is not frozen -- it is not mounted. `loading-suite.md`
+   * says reduced motion "skips straight to the gate", and `showsOpeningSequence`
+   * answers false, so there is no element carrying this class for a rule to reach.
+   * Restoring it to opacity 1 would stack four concept marks in a pile on the one
+   * surface that never renders them.
+   */
+
+  /* The running dots stop where they start rather than vanishing, so the rail is
+     still a rail. */
+  .ast-anim-dot-run,
+  .ast-anim-dot-run-sm {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* The flicker slots: one still mark, chosen by the markup. */
+  .ast-flick-slot > * {
+    opacity: 0;
+  }
+
+  .ast-flick-slot > [data-ast-rest] {
+    opacity: 1;
+    transform: none;
+  }
+}

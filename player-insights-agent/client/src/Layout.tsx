@@ -1,0 +1,522 @@
+/**
+ * The frame every page is drawn inside: the header, the navigation at both
+ * widths, the identity chips and the storage banner.
+ *
+ * Split out of App.tsx so each page could become its own module. What is left in
+ * App.tsx is the router, and this is the element it wraps every route in.
+ */
+import { NavLink, Outlet, Link, useLocation, useSearchParams } from 'react-router';
+import { useCallback, useState } from 'react';
+import { storageBannerNotice } from './storage-banner-copy';
+import {
+  persistExperimentalFeatures,
+  readExperimentalFeatures,
+  type ExperimentalFeatures,
+} from './experimental-features';
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from './ui';
+import {
+  Activity,
+  CircleAlert,
+  FlaskConical,
+  Gauge,
+  Info,
+  Menu,
+  MessageSquareText,
+  Network,
+  PlugZap,
+  Settings,
+  Workflow,
+} from 'lucide-react';
+import type { ComponentType } from 'react';
+import { useFirstOpen } from './FirstOpenGate';
+import { LANDED_ANNOUNCEMENT, drawsAppShell, isArriving } from './login-transition';
+import { Disclosure } from './page-chrome';
+import { formatCheckedAt } from './preflight';
+import { useIdentity, useStorageHealth } from './app-state';
+import type { Identity } from './app-types';
+import { AstrolabeLockup } from './AstrolabeMark';
+import { BuiltOnDatabricks } from './BuiltOnDatabricks';
+import { userInitials } from './user-initials';
+import { RoleBadge } from './RoleBadge';
+import { RoleLostNotice } from './GatePanel';
+import {
+  navEntries,
+  roleFrom,
+  showsSettingsGear,
+  type AppOutletContext,
+  type RoleResolution,
+} from './role';
+
+/**
+ * The app-wide statement that stored data is not what is being shown.
+ */
+function StorageBanner() {
+  const health = useStorageHealth();
+  // Which of the three things to say, and in which words, is decided in
+  // storage-banner-copy.ts so that it can be tested without a browser. The
+  // three states put identical-looking seeded figures on screen and have
+  // different remedies, and a reader who cannot tell them apart goes looking
+  // for the wrong fault. That is not hypothetical, it is how this banner came
+  // to be written, and it is why the choice is now something a test pins.
+  const notice = storageBannerNotice(health && {
+      ...health,
+      since: formatCheckedAt(health.since),
+      last_ok_at: health.last_ok_at ? formatCheckedAt(health.last_ok_at) : null,
+    }
+  );
+  if (!notice) return null;
+
+  // Two tones, and the tone is the whole of the difference: a refusing or
+  // unreachable store is the danger alert, an answering-but-empty one is the
+  // neutral information strip. Deliberately never amber -- the stylesheet
+  // records amber being removed from here, because sitting near the evaluation
+  // card it read as a dimmer version of it and blurred the rule that amber
+  // means evaluation and nothing else.
+  //
+  // Neither tone is stated in classes here any more. `variant="destructive"`
+  // is enough for alerts.css to give the alert the red line and wash, and the
+  // neutral one comes from the app's own `[data-slot='alert']` rule, so the two
+  // are painted where every other alert in the app is painted.
+  const blocking = notice.tone === 'blocking';
+  return (<div className={`storage-banner ${blocking ? 'blocking' : 'neutral'}`}>
+      <Alert variant={blocking ? 'destructive' : 'default'}>
+        {blocking ? <CircleAlert /> : <Info />}
+        {/* Four blocks, and the description slot stacks them, because AppKit
+            lays it out as a grid again: the app-wide `display: block` pin that
+            used to fight that is gone. The heading and the detail are wrapped in
+            one child of the grid rather than being two of them, because they are
+            one statement, and separated from each other in shell.css. */}
+        <AlertDescription>
+          <div className="storage-banner-say">
+            <strong>{notice.heading}</strong>
+            <span>{notice.detail}</span>
+          </div>
+          {/* THE ERROR STAYS IN FRONT OF THE READER. It is the one line here
+              that is specific to this deployment at this moment, it is what
+              gets pasted into a ticket, and it is not reasoning. */}
+          {health?.last_error ? (<span className="storage-banner-note">
+              {health.last_error.route} failed: {health.last_error.message}
+            </span>
+          ) : null}
+          {/* Why a blank list is not an empty one, and why waiting cannot fix a
+              refusal. All true, none of it what a reader wants before the
+              status -- this banner is under the header on every page in the
+              app, so its paragraph was the most-read copy in it. */}
+          {notice.reasoning ? (<Disclosure summary="Why">
+              <p>{notice.reasoning}</p>
+            </Disclosure>
+          ) : null}
+          {/* The command itself, on screen, in a shape that can be copied. A
+              banner that says "run the grant script" without saying which
+              variables it needs sends the reader to the docs to find out, and
+              the docs are the thing they already did not read. */}
+          {notice.remedy ? <pre className="storage-banner-command">{notice.remedy}</pre> : null}
+          {/* Which variables it needs and why no redeploy does it for them.
+              Behind the command rather than under it: somebody who has the
+              command has what they came for, and the note is three sentences. */}
+          {notice.remedyNote ? (<Disclosure summary="Why this is manual">
+              <p>{notice.remedyNote}</p>
+            </Disclosure>
+          ) : null}
+          <p className="storage-banner-note">
+            <Link to="/connections">Open Connections</Link>
+          </p>
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
+}
+
+// The header nav is a tab row now rather than a row of pills: full-height items
+// whose active state is a 2px blue rule along the header's bottom edge, which is
+// the treatment the design gives every tab row in the app. It takes no argument
+// because the state is read off `aria-current`, which NavLink sets itself -- so
+// what a screen reader is told and what is painted are one fact read twice
+// rather than two facts that can drift. See .app-nav-tab in shell.css.
+const navLinkClass = () => 'app-nav-tab';
+
+export const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `block px-3 py-2 rounded-md text-sm font-semibold transition-colors ${
+    isActive
+      ? 'bg-primary text-primary-foreground'
+      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+  }`;
+
+type NavLinkClassFn = (props: { isActive: boolean }) => string;
+
+/**
+ * The icon for each entry, keyed by its route.
+ *
+ * Here rather than in role.ts because an icon is presentation and that module
+ * decides permissions and wording. Keyed by `to` rather than carried in the
+ * entry so a route with no icon is a missing key this file can see, instead of
+ * an optional field every consumer has to handle.
+ *
+ * Monitoring takes the pulse line and Ops the dial, which is the split the two
+ * pages already make: Monitoring is what happened over time, Ops is what the
+ * deployment is doing and costing right now.
+ */
+const NAV_ICONS: Readonly<Record<string, ComponentType<{ className?: string }>>> = {
+  '/': MessageSquareText,
+  '/runs': Workflow,
+  '/monitoring': Activity,
+  '/ops': Gauge,
+  '/connections': PlugZap,
+  '/architecture': Network,
+  '/benchmarks': FlaskConical,
+};
+
+/**
+ * The whole navigation, rendered twice: as the header row above 1180px and
+ * inside the mobile sheet below it.
+ *
+ * One component on purpose, and the reason is worth keeping. The two used to be
+ * separate lists, and a link added to one was a link missing from the other for
+ * however long it took somebody to open a narrow window. `role` and `features`
+ * arrive as props for the same reason: whatever is hidden here is hidden at both
+ * widths, because there is one decision rather than one per rendering. That is
+ * what makes "a consumer sees no Monitoring entry" true of the sheet as well as
+ * of the header row.
+ *
+ * WHICH ENTRIES, AND IN WHAT ORDER, IS role.ts's ANSWER AND NOT THIS FILE'S.
+ * The two sets are absent-not-disabled: a consumer gets a shorter list rather
+ * than a greyed one, because a disabled control a reader can never enable is a
+ * permanent invitation to file a support request. Hiding an entry is also not a
+ * permission: the server refuses every admin route with 403 whatever this draws.
+ */
+export function NavLinks({
+  className,
+  linkClass,
+  role,
+  features,
+  onClick,
+}: {
+  className?: string;
+  linkClass: NavLinkClassFn;
+  role: RoleResolution;
+  features: ExperimentalFeatures;
+  onClick?: () => void;
+}) {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // Carry the open conversation from Ask PIA into Run Explorer. Clicking through
+  // used to drop it, so the Explorer opened on whoever's run was newest instead
+  // of the conversation the reader was just looking at. Only while on Ask PIA
+  // ('/'): the conversation id lives in its `?c=` and means nothing on the
+  // other pages, whose own query strings must not be read as one.
+  const openConversation = location.pathname === '/' ? searchParams.get('c') : null;
+  const runsTo = openConversation
+    ? `/runs?conversation=${encodeURIComponent(openConversation)}`
+    : '/runs';
+  return (<nav className={className}>
+      {navEntries(role.state, features).map((entry) => {
+        const Icon = NAV_ICONS[entry.to];
+        return (<NavLink
+            key={entry.to}
+            to={entry.to === '/runs' ? runsTo : entry.to}
+            // Ask PIA only. Without it the root path matches every route and the
+            // first tab is drawn active on all of them.
+            end={entry.to === '/'}
+            className={linkClass}
+            onClick={onClick}
+          >
+            {Icon ? <Icon className="size-4" /> : null} {entry.label}
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * Who is reading, as two characters in a circle.
+ *
+ * §1's chrome is "role chip · avatar · divider · Built on Databricks", and the
+ * avatar is where the "Signed in <local part>" chip used to be. The chip spent
+ * about 140px of a header that also has to hold seven tabs to say a name the
+ * reader already knows, and truncated it at the widths where it mattered.
+ *
+ * THE WHOLE ADDRESS IS STILL HERE, on `title` and as the accessible name, which
+ * is where it belongs: the circle is an abbreviation and an abbreviation that
+ * cannot be expanded is a puzzle. `userInitials` is what expands it, and it
+ * answers for a service principal and for an identity read that never landed as
+ * well as for a person, so the circle always holds something.
+ */
+export function IdentityAvatar({ identity }: { identity: Identity }) {
+  const mark = userInitials(identity.signedInAs);
+  return (<span className="identity-avatar" data-testid="identity-avatar" title={identity.signedInAs}>
+      <span aria-hidden="true">{mark.initials}</span>
+      <span className="sr-only">{mark.label}</span>
+    </span>
+  );
+}
+
+/**
+ * The header's right-hand cluster, minus the gear: the role chip, the avatar, a
+ * divider, and the Databricks attribution.
+ *
+ * ORDER IS role.ts's, as HEADER_CLUSTER_ORDER, rather than this file's.
+ *
+ * THE OAUTH BADGE IS NO LONGER HERE, and that is a move rather than a deletion.
+ * §1 enumerates this cluster and the badge is not in it; the two surfaces that
+ * are ABOUT the sign-in still carry it, and they are the two a reader goes to
+ * when they want to know -- the login gate states it on the way in
+ * (`login-gate.md`, Identity block) and the Connections identity card states it
+ * beside the address (`design-spec-master.md` §8). What it was doing in the
+ * header was reporting a fact nobody had asked about, in the row that has to
+ * hold the navigation.
+ *
+ * The cluster is one component rather than markup in the header so the mobile
+ * sheet gets the same three things in the same order. That is the argument
+ * NavLinks makes about the two navigations: one component means one decision.
+ */
+export function IdentityChips({
+  identity,
+  role,
+  className,
+}: {
+  identity: Identity;
+  role: RoleResolution;
+  className?: string;
+}) {
+  return (<div className={`identity-chips ${className ?? ''}`}>
+      <RoleBadge state={role.state} />
+      <IdentityAvatar identity={identity} />
+      {/* The divider §1 puts between the reader and the attribution. Decorative,
+          and the only thing separating "who you are" from "who made this". */}
+      <span className="app-chrome-rule" aria-hidden="true" />
+      <BuiltOnDatabricks />
+    </div>
+  );
+}
+
+export function Layout() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const identity = useIdentity();
+  /*
+   * The gate, and whether this frame is allowed to draw the app at all.
+   *
+   * THE FLICKER WAS HERE, in what this file did with an answer it did not have
+   * yet. `/api/identity` takes about a second on a cold open, the gate drew nothing
+   * while it was in flight, and everything below drew as usual -- so the reader got
+   * the header, the tabs and the Ask tab, and then a full-viewport login gate
+   * landed on top of them. It was not a timing problem to be nudged with a delay;
+   * the app was painting a screen it had not yet earned the right to paint.
+   *
+   * `drawsAppShell` is the permission, and `pending` is the one stage that
+   * withholds it. Once the gate is up the shell mounts behind it, which the
+   * transition depends on: `login-transition.md`'s landing is explicit that the Ask
+   * tab is already fully rendered under the crossfade, with no skeleton and no
+   * second load.
+   */
+  const firstOpen = useFirstOpen(identity);
+  const arriving = isArriving(firstOpen.stage);
+  // Derived from the identity read that already happened rather than fetched
+  // again. `/api/identity` carries the role beside the address, so a second
+  // request would be a second answer to the same question and the two could
+  // race. While it is resolving, and if it cannot be read at all, the consumer
+  // layout is what is drawn: under-offering costs a reader some tabs, and
+  // over-offering sends them to a page the server refuses.
+  const role = roleFrom(identity);
+  // Read once, when the app opens, and held here. `useState(fn)` rather than
+  // `useState(readExperimentalFeatures())` so the read happens on mount instead
+  // of on every render of the header.
+  const [features, setFeatures] = useState<ExperimentalFeatures>(readExperimentalFeatures);
+  // Written on the change rather than from an effect watching `features`: an
+  // effect also runs on first mount, which would turn opening the app into a
+  // write of the defaults over whatever is stored. A store that refuses the
+  // write is not surfaced, because the toggle still moves and the preference
+  // simply does not outlive the tab.
+  const setFeature = useCallback(
+    (name: keyof ExperimentalFeatures, enabled: boolean) => {
+      const next = { ...features, [name]: enabled };
+      persistExperimentalFeatures(next);
+      setFeatures(next);
+    },
+    [features]
+  );
+
+  /*
+   * The gate alone, on the one stage where the app may not draw.
+   *
+   * An early return rather than a conditional around the shell, because the point
+   * is that NONE of it renders: no header, no navigation, no outlet, and so none of
+   * the requests a page fires on mount either.
+   */
+  if (!drawsAppShell(firstOpen.stage)) return <>{firstOpen.gate}</>;
+
+  return (<div className={`min-h-screen flex flex-col${arriving ? ' ast-anim-x-app' : ''}`}>
+      {/* The page is white. It was `bg-muted/30`, a 30% wash under every card in
+          the app, which is the soft-ground treatment DuBois replaces with
+          hairlines on a solid surface.
+
+          The header's height is --app-header-h and is set in shell.css rather
+          than derived from what happens to be inside it. §1 gives the bar as
+          52px, every sticky offset in the app subtracts that token, and a header
+          measured by its tallest child is a header that changes height the next
+          time somebody adjusts a font size. */}
+      <header className="app-header border-b bg-background flex items-center sticky top-0 z-30">
+        {/* The lockup, and then the divider §1 puts between it and the tabs.
+            The column's width is what aligns the first tab with the conversation
+            rail below it, so the divider sits inside the column rather than
+            after it -- placed after, it would land on the rail's own hairline
+            and read as one crooked line rather than as two.
+            The wordmark IS the app's name, so it is the page's h1. The partner
+            plate and the "Player Intelligence" kicker that used to be here are
+            gone: the app has its own identity now, and the plate reserved a
+            position for a trademark this repository must not carry. */}
+        {/* The lockup pops in at the exact point the stars converged on
+            (`login-transition.md` phase 5). The class is on the lockup rather than
+            on the column so the divider beside it does not pop with it, and it is
+            only ever carried for the 1.2s of the transition -- an app identity that
+            animates every time the header re-renders is an identity in motion,
+            which is the opposite of what an identity is for. */}
+        <div className="brand-lockup">
+          <AstrolabeLockup as="h1" seat="bar" className={arriving ? 'ast-anim-x-mark' : undefined} />
+          <span className="app-chrome-rule" aria-hidden="true" />
+        </div>
+        {/* Four links for a consumer, six for an admin, and one more than either
+            with the Benchmark Lab experiment on -- seven for everybody while
+            `SHOW_EVERY_TAB_TO_EVERYONE` is on. The breakpoint stays whatever
+            the count is: below it the nav and the brand alone over-subscribe the
+            header, which squeezed the identity chips to zero width and pushed
+            the gear off the right edge. The sheet below carries the same links,
+            from the same component, at those widths. Tying the breakpoint to the
+            count would mean the header collapsed at a different width for two
+            people looking at the same deployment.
+
+            Six tabs do not over-subscribe it, but they leave the chips much less
+            room than four did, so responsive.css takes 4px off each side of every
+            tab in the 1180-1365 band -- the same band where the chip already
+            sheds its label because the header is tight. The first tab keeps its
+            zero left padding there, which is what holds the rail alignment.
+
+            Which width that is now lives in responsive.css with the other three,
+            rather than in a `xl:` utility here. The two systems disagreed: the nav
+            collapsed at Tailwind's 1280 while the trace inspector had already gone
+            at the hand-written 1180, so there was a 100px band in which the header
+            was full and the page had lost a column. One set of breakpoints now --
+            480, 800, 1180, 1366 -- and the nav goes at 1180 with the inspector. */}
+        <NavLinks className="app-nav" linkClass={navLinkClass} role={role} features={features} />
+        <IdentityChips identity={identity} role={role} />
+        {/* The way into settings, and now into settings rather than towards them.
+            
+            This pointed at `/connections` for as long as the gear existed, on
+            the argument that Connections was already the settings surface: it
+            reads and writes `/api/settings`, and nobody looking for settings
+            looks for "Connections". The argument was wrong about what a gear
+            promises. A gear says "your preferences", and landing on a page of
+            catalogs, warehouses and endpoint ids reads as a mis-click, which is
+            the complaint this control kept attracting.
+
+            So there are two surfaces, split by whose they are. `/settings` holds
+            what belongs to the person reading and lives in their browser.
+            Connections holds what the DEPLOYMENT is -- resources, deployment
+            reporting, the identity and permission record -- which is shared,
+            server-side, and consequential for everybody using the app. Those are
+            different things to change and different things to be careful about,
+            and one page for both is what made a gear land on a warehouse id.
+
+            Neutral by construction. `ghost` and `text-muted-foreground` are
+            tokens rather than hues, so it comes through a repaint of the
+            palette without a second edit.
+
+            Named "App settings" rather than "Settings" so it is not a substring
+            of anything nearby: "the button called Settings" would otherwise be
+            an ambiguous locator the moment a settings word appears in the nav,
+            which is how the delete control broke four tests this morning. The
+            page it opens is titled "App settings" for the same reason, and
+            settings is deliberately still not a nav entry.
+
+            ADMIN ONLY, AND ABSENT RATHER THAN DISABLED. The page behind it is
+            the admin-list editor, whose endpoints refuse a consumer with 403, so
+            a drawn-but-dead gear would be an invitation to press something that
+            cannot work. A consumer's own preferences are not lost with it: the
+            only one this app has is the Benchmark Lab toggle, which is an
+            experiment rather than a preference. */}
+        {showsSettingsGear(role.state) && (<Button asChild variant="ghost" size="icon" className="header-settings text-muted-foreground hover:text-foreground">
+            <NavLink to="/settings" aria-label="App settings" title="App settings">
+              <Settings className="size-5" />
+            </NavLink>
+          </Button>
+        )}
+        {/* Mobile nav, drawn only below the width at which the desktop nav is
+            hidden. Both sides of that switch are in responsive.css, so they cannot
+            be read off two different breakpoint systems and leave the header with
+            either both or neither. */}
+        <div className="mobile-nav">
+          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <Button variant="outline" size="icon" onClick={() => setMobileNavOpen(true)}>
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open navigation</span>
+            </Button>
+            <SheetContent side="left">
+              <SheetHeader>
+                <SheetTitle>Navigation</SheetTitle>
+              </SheetHeader>
+              <NavLinks
+                className="flex flex-col gap-1 px-4"
+                linkClass={mobileNavLinkClass}
+                role={role}
+                features={features}
+                onClick={() => setMobileNavOpen(false)}
+              />
+              {/* Only drawn at the widths where the header cannot carry the chip
+                  itself, which responsive.css decides for both copies at once. */}
+              <IdentityChips identity={identity} role={role} className="mobile-identity" />
+            </SheetContent>
+          </Sheet>
+        </div>
+        {/* The 2px line under the top bar, and the only loading signal in the
+            transition (`login-transition.md` phase 6). It removes itself with the
+            rest of the arriving state, and it is decorative: what a screen reader
+            gets is the one status string below. */}
+        {arriving ? <span className="ast-anim-x-bar fo-x-bar" aria-hidden="true" /> : null}
+      </header>
+
+      {/* Once per session, above everything, and handed the identity this frame
+          has already read rather than fetching a second one. In the layout rather
+          than around the router in App.tsx for exactly that reason: App.tsx has no
+          identity, so a gate mounted there would have to ask for one, and two
+          reads of `/api/identity` are two answers that can disagree. Being
+          re-rendered on every navigation costs nothing -- the panel's own latch is
+          what makes it once per session rather than once per page. */}
+      {firstOpen.gate}
+
+      {/* The ONE thing the transition says out loud (spec, Keyframes). Every layer
+          of the animation is aria-hidden, so without this a reader on a screen
+          reader gets a second of silence and then a different page. */}
+      {arriving ? (
+        <p className="sr-only" role="status" aria-live="polite">
+          {LANDED_ANNOUNCEMENT}
+        </p>
+      ) : null}
+
+      <StorageBanner />
+
+      {/* Empty except on the one arrival that carries it: a reader who was
+          standing on an admin page when the role was taken away has just been
+          moved here, and four things vanished from the header on the way. An
+          unexplained move reads as a fault. */}
+      <RoleLostNotice />
+
+      <main className="flex-1">
+        {/* The flags travel to the settings page through the outlet rather than
+            through a second read of storage there, so the page and the nav above
+            it are looking at the same object and a toggle moves the header in the
+            same render. The role travels the same way and for the same reason:
+            a page that fetched it again could disagree with the header about
+            which set of tabs the reader is entitled to. */}
+        <Outlet context={{ features, setFeature, role } satisfies AppOutletContext} />
+      </main>
+    </div>
+  );
+}

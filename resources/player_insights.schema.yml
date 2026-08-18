@@ -1,0 +1,14 @@
+# Unity Catalog schema for objects owned by this deployment. Production data is
+# read from the separate scopes in data_catalogs and is never created here.
+# Bundle plans may show platform-managed schema properties as updates; do not
+# copy those workspace-specific properties into this file.
+
+resources:
+  schemas:
+    player_insights_schema:
+      catalog_name: ${var.app_catalog}
+      name: ${var.app_schema}
+      comment: "Player Insights Agent: model, semantic layer, and app-owned assets."
+      lifecycle:
+        # Destroying this schema permanently removes its tables and model.
+        prevent_destroy: true

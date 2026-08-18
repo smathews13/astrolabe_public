@@ -1,0 +1,339 @@
+/*
+ * The two constellation bands, and the recoloured product marks that are stars in
+ * them.
+ *
+ * `.ast-sky-path` is the live agent path (`#18a`) and `.ast-sky-map` is the agent
+ * map (`#18b`). Both are the `#16f` constellation theme applied to a real run: a
+ * navy band, thin `#6FAEDD` connectors, stars drawn as the mark's sparkle and as
+ * recoloured product icons.
+ *
+ * THIS FILE PAINTS. It is the first astrolabe partial that does, so unlike
+ * astrolabe-tokens.css and astrolabe-animation.css it has a cascade position to
+ * lose, and it sits with the page partials in index.css rather than at the end
+ * with them. It reads `--ast-*` only: there is no `--db-*` name below, which is
+ * deliberate and is the thing to preserve when the DuBois set is retired.
+ *
+ * NO GEOMETRY OF THE DRAWING IS HERE. Every coordinate is in
+ * agent-constellation.ts, in viewBox units, and the SVG scales to its container.
+ * That split is why these bands cannot overflow: there is no width in this file for
+ * a container to disagree with, no `overflow` to be set to `auto`, and nothing that
+ * needs a breakpoint. The card grid beside them took two attempts to stop running
+ * off the page, both cosmetic, and the fix that held was moving the decision into
+ * the box model; this is the same decision taken before the first attempt.
+ *
+ * CONTRAST. §5 forbids the theme behind body text under 4.5:1, and the two text
+ * rungs drawn on these bands clear it against `#11171C`: white at 0.8 renders
+ * about 9.4:1 and `--ast-text-on-dark-secondary` is 6.2:1. The connectors are not
+ * text -- they are 1.2-unit lines at 0.2 opacity -- and nothing is set on top of
+ * one.
+ */
+
+/*
+ * THE MARK'S INK IS NOT HERE. It is `astrolabe-mark.css`, on `.ast-mark--light`
+ * and `.ast-mark--dark`, and a seating chooses between them with the component's
+ * `ink` prop rather than with a rule of its own. This file briefly held two
+ * `.ast-mark` colour rules, written against a simpler `currentColor` mark this
+ * lane had drawn in parallel with the one that landed on `main`. Two drawings of
+ * one figure is the thing brand-icons.test.tsx exists to stop, and a second place
+ * to colour it is the same mistake one layer down.
+ *
+ * §2 for why there are two and not one: `--ast-blue` at 2.7:1 on `#11171C` is a
+ * mark a reader has to look for, so the on-navy seating lightens the accent
+ * rather than darkening the ink.
+ */
+
+/* ---- The band ---- */
+
+/*
+ * A navy panel that is as wide as the pane it is in and as tall as its drawing.
+ *
+ * No width, no min-width and no overflow. The height comes from the SVG's own
+ * aspect ratio, which the geometry module derived from the step count, so a
+ * twenty-step map is taller than a nine-step one without this file knowing either
+ * number.
+ */
+.ast-sky {
+  background: var(--ast-navy);
+  border-radius: var(--ast-radius-card);
+  /* `clip` and not `hidden`: a clip region cannot be scrolled, so the defect the
+     card grid was rebuilt twice to fix -- later steps parked off-screen behind a
+     scrollbar on a container nothing announced as scrollable -- cannot come back
+     through this declaration. */
+  overflow: clip;
+}
+
+.ast-sky-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---- Connectors ---- */
+
+/*
+ * The theme's own weights: 1.2 units, `--ast-blue-on-dark`, 0.2 at rest and 0.55
+ * while a line is drawing.
+ *
+ * 0.2 is faint on purpose. The chain is context rather than content -- the run's
+ * shape at a glance -- and the line that matters is the one arriving, which is the
+ * only one at 0.55. A rest opacity that competed with it would make the drawing
+ * say a step was in progress everywhere.
+ */
+.ast-links {
+  stroke: var(--ast-blue-on-dark);
+  stroke-width: 1.2;
+  fill: none;
+}
+
+.ast-link {
+  opacity: 0.2;
+}
+
+.ast-link-live {
+  opacity: 0.55;
+}
+
+/*
+ * The 2.2s loop the design gives the line into the current step.
+ *
+ * The duration is a property of this seating rather than of the keyframe, which is
+ * why it is here and not in astrolabe-animation.css -- the same `ast-draw` runs at
+ * 8s on the in-flight band and at 7s on the splash. The class name is what the
+ * reduced-motion guard in that file matches, and it also restores the resting
+ * state: `ast-draw` starts fully dashed out, so `animation: none` alone would
+ * leave this line invisible rather than still.
+ */
+.ast-anim-draw {
+  animation: ast-draw 2.2s linear infinite;
+}
+
+.ast-anim-star-pulse {
+  animation: ast-star-pulse 1.6s ease-in-out infinite;
+}
+
+.ast-anim-center-pulse {
+  animation: ast-center-pulse 1.6s ease-in-out infinite;
+}
+
+/* ---- Stars ---- */
+
+/*
+ * An agent decision. White at 0.85, which is the theme's brightest star, because
+ * the decisions are the spine of the run: the tool calls are what it reached for
+ * and the sparkles are where it chose to.
+ */
+.ast-star-decision {
+  fill: var(--ast-white);
+  opacity: 0.85;
+}
+
+/* The step in progress, at full weight. It is the one star a reader is looking
+   for, and the pulse it carries is only legible from a solid glyph. */
+.ast-star-current {
+  fill: var(--ast-white);
+}
+
+/* The ring that breathes around it. A stroke rather than a fill so the star inside
+   keeps its own shape. */
+.ast-star-ring {
+  fill: none;
+  stroke: var(--ast-blue-on-dark);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+/*
+ * A tool nobody has classified: a plain dot, in the secondary rung.
+ *
+ * Not a product mark that fits. A reader who knows the Databricks marks reads a
+ * lookalike as one and is then wrong about which product ran, which is the whole
+ * reason `brand-icons.ts` exists.
+ */
+.ast-star-plain {
+  fill: var(--ast-text-on-dark-secondary);
+}
+
+/*
+ * The selected star's ring and tint, §5's own two marks for it.
+ *
+ * Both in `--ast-blue-on-dark`: the ring at full weight and the tint at 0.14, which
+ * is a wash a 16px product mark still reads through. Drawn under the star by the
+ * component, so this cannot cover the artwork.
+ */
+.ast-star-selected {
+  fill: color-mix(in srgb, var(--ast-blue-on-dark) 14%, transparent);
+  stroke: var(--ast-blue-on-dark);
+  stroke-width: 1.5;
+}
+
+/* ---- Text on the band ---- */
+
+/*
+ * The step's name. 9.5 units, which is a size in the DRAWING rather than on the
+ * page: the SVG scales, so this renders at whatever fraction of the band's width
+ * the pane gives it, and the type scale in astrolabe-tokens.css is about page
+ * pixels. That is also why it is not `--ast-fs-*`.
+ */
+.ast-sky-name {
+  fill: var(--ast-white);
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  opacity: 0.8;
+}
+
+/* The one whose panel is open. Full weight and full opacity, so the selected step
+   is legible as well as ringed -- never the ring alone. */
+.ast-sky-name.selected {
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* A tool's own identifier is a value, so it takes the mono face every identifier
+   in this app takes. */
+.ast-sky-name.mono {
+  font-family: var(--font-mono);
+}
+
+/*
+ * The step number and the duration.
+ *
+ * Mono, because they are figures in a meta slot: `.ast-num` states that rule for
+ * the page and this is its form inside a drawing. Tabular by construction -- DM
+ * Mono gives every glyph an advance of 600 -- which is what lets the geometry
+ * module compute a label's width arithmetically rather than guessing at it.
+ */
+.ast-sky-meta,
+.ast-sky-num text,
+.ast-sky-legend text {
+  fill: var(--ast-text-on-dark-secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The legend names products, which are words rather than figures. */
+.ast-sky-legend text {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+}
+
+/* ---- The live path's status line ---- */
+
+/*
+ * The one live region on the band, and the visible label doubles as it.
+ *
+ * Inside the panel and along its foot, as the design draws it, which is why the
+ * colours here are the on-navy rungs rather than the page's. ALONG THE FOOT AND
+ * NOT ON TOP OF THE DRAWING: it was `position: absolute` over the canvas, which
+ * put it through whichever star the geometry had placed low in the viewBox --
+ * the caption and the step's own number were both unreadable on any run whose
+ * current step landed there. It is a row in the band's own column now, so the
+ * navy grows to hold it and there is nothing for a coordinate to collide with.
+ * The drawing's own bottom reserve is `PATH_PAD_BOTTOM`, which is left alone.
+ */
+.ast-sky-path {
+  display: flex;
+  flex-direction: column;
+}
+
+.ast-sky-status {
+  display: flex;
+  /* The first line, not the middle: the row is as tall as a step name needs and
+     the mark and the elapsed belong beside the name's first line rather than
+     halfway down a wrapped sentence. */
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  /* No top padding: the SVG already reserves room under its last star. */
+  padding: 0 14px 12px;
+}
+
+.ast-sky-status-mark {
+  flex: none;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+
+.ast-sky-status-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ast-sky-status-text {
+  min-width: 0;
+  flex: 1;
+  color: var(--ast-white);
+  font-size: var(--ast-fs-12);
+  font-weight: 500;
+  /*
+   * AS MANY LINES AS THE STEP'S NAME NEEDS.
+   *
+   * It was one line with an ellipsis, on the argument that a wrap moves the
+   * band's own foot. It does, and that is the cheaper of the two: the band is a
+   * row in a column that grows, so a second line costs the reader nothing, while
+   * "Step 05 · Checking field d…" costs them the only sentence on this surface
+   * that says what the agent is doing. The names are the agent's own and several
+   * of them are longer than any width this rail will ever have.
+   *
+   * `anywhere` is not wanted here even at this width -- these are sentences
+   * rather than identifiers, and the tile below breaks at spaces only for the
+   * same reason.
+   */
+  line-height: 1.45;
+}
+
+/* Right-aligned meta, so mono. The figure is a real elapsed and never a
+   percentage. */
+.ast-sky-status-elapsed {
+  flex: none;
+  color: var(--ast-text-on-dark-secondary);
+  font-size: var(--ast-fs-11);
+}
+
+/* ---- The two surfaces a band is seated in ---- */
+
+/*
+ * The band above the steps, in a column, and NOTHING ELSE.
+ *
+ * No width, no `overflow`, no `min-width`. That is the whole point of these two
+ * rules: the map's card grid is a grid of fixed tracks and the band above it is an
+ * SVG that scales, so neither can be wider than the pane, and there is no
+ * declaration here for a future breakpoint to have to correct. The gap is the
+ * design's own spacing between the band and the first row of cards.
+ */
+.agent-map {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.agent-path {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ---- The recoloured product marks ---- */
+
+/*
+ * Geometry and nothing else. Both cuts arrive already coloured -- `-blue-light` is
+ * `#2272B4` over `#B7D6EE` and `-blue` is `#6FAEDD` over the same tint -- so a
+ * `color` or a `fill` here would be a third staining of a trademark on top of the
+ * one that was ruled on. Recolour, never redraw, and never twice.
+ */
+.theme-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--theme-icon-size, 14px);
+  height: var(--theme-icon-size, 14px);
+}
+
+.theme-icon svg {
+  width: 100%;
+  height: 100%;
+}

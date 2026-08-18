@@ -1,0 +1,214 @@
+.page-shell {
+  max-width: 1440px;
+  padding: 40px clamp(20px, 4vw, 56px) 70px;
+  margin: auto;
+  display: grid;
+  gap: 24px;
+}
+/* Every card on the non-transcript pages, in one rule. A hairline and nothing
+   else: these are static panels, and elevation in DuBois belongs to the things
+   that appear over the page — Modal, Popover, Sheet — not to the page itself. */
+.page-shell [data-slot='card'] {
+  border-color: var(--border);
+}
+.page-shell > * {
+  min-width: 0;
+}
+.page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+/*
+ * 22px, which is the size the design gives a page title.
+ *
+ * It was `clamp(28px, 4vw, 38px)`: a display size, and on a wide window nearly
+ * twice the 22px the mockup draws every one of these headings at. The four pages
+ * that share this rule are other screens' work, so the size is corrected once here,
+ * in the file that owns the shell they sit in, rather than four times in four
+ * partials. The tracking comes back with it -- −0.03em is a display figure and only
+ * looks right at a display size.
+ */
+.page-heading h2 {
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0 0 2px;
+}
+.page-heading > div > p:last-child {
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+/* ── The collapsed reasoning ───────────────────────────────────────────────
+   One rule for every disclosure that holds the reasoning behind a stated fact,
+   wherever it appears: the storage banner, Ops, Monitoring, Architecture,
+   the Benchmark Lab, Run Explorer and the answer card. Here rather than in each
+   page's partial because a reader meets several of these in one session and a
+   per-page rule is how three of them came to look like three different
+   controls.
+
+   Quiet by construction. The summary is the same muted small text a caption
+   uses, so it reads as a way in rather than as a warning, and the body inside
+   is the ordinary body size -- a reader who opened it asked for prose. */
+.copy-disclosure > summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  /* The marker stays. It is the only affordance saying there is more, and the
+     summary text alone reads as a label somebody forgot to finish. */
+  width: fit-content;
+}
+.copy-disclosure > summary:hover {
+  color: var(--db-body);
+}
+.copy-disclosure > p {
+  margin: 6px 0 0;
+}
+.copy-disclosure > p + p {
+  margin-top: 6px;
+}
+
+/* ── The consumer gate ─────────────────────────────────────────────────────
+   What a consumer gets in place of an admin page they followed a link to. Three
+   elements and nothing else: the heading, one line naming the page, and the way
+   back.
+
+   Here rather than in a page's own partial because it replaces THREE pages and
+   must look the same on all of them. A reader who meets it twice should not be
+   able to tell which page refused them apart from the sentence. */
+.role-gate {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+/* 16px/700, the app's section rung rather than a page title. It is not the top
+   of a page; it is a statement about the one the reader asked for. */
+.role-gate-heading {
+  margin: 0;
+  font-size: var(--text-h-section);
+  font-weight: 700;
+}
+.role-gate-line {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+/* Primary. It is the only thing to do here, and a quiet button on a dead end is
+   a reader looking for what they are supposed to press. */
+.role-gate-action {
+  margin-top: 6px;
+}
+
+/* The move, announced. Full-bleed under the header rather than inside the page,
+   because it is about the navigation that just happened and not about whatever
+   page the reader landed on. Red, and not amber: amber means evaluation in this
+   app, and losing access is a failure of the reader's expectation rather than a
+   judgement of anything. */
+.role-lost-notice {
+  padding: 10px clamp(20px, 4vw, 56px);
+  background: var(--db-red-wash);
+  border-bottom: 1px solid var(--db-red-line);
+}
+.role-lost-notice p {
+  max-width: 1440px;
+  margin: 0 auto;
+  font-size: var(--text-sm);
+  color: var(--db-body);
+}
+
+/* ── Refresh ───────────────────────────────────────────────────────────────
+   The pair every page that re-reads something ends its heading with: when it
+   was last read, then the button. Here rather than in a page's own partial
+   because two pages draw it, and the previous arrangement -- one set of rules
+   per page -- is how the two came to look different. */
+.refresh-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Quiet, and tabular so that a read cannot reflow the line it sits on. */
+.refresh-control-when {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+/*
+ * Filled blue, white label, white icon. One rule for every seat: the Connections
+ * and Architecture headings, the Monitoring and Ops headings, the retry inside
+ * the Connections error alert, the unavailable panel and the access gate.
+ *
+ * 600 rather than the primitive's 500. The design draws this label at the app's
+ * semibold, and it is the only text in the heading a reader is meant to act on.
+ *
+ * The fill and the ink are stated here rather than left to the `default` button
+ * variant alone. The variant resolves through --primary, which is the same blue,
+ * so today the two agree -- but the three states below have to be written out
+ * whatever the variant does, and a fill declared in one place and three hover
+ * rungs declared in another is how a control ends up with a hover that is lighter
+ * than its rest state. White on #2272B4 is 5.08:1 and clears AA.
+ */
+.refresh-button {
+  background: var(--db-blue-600);
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+}
+/*
+ * DARKER, NOT TINTED. --db-hover-tint and --db-press-tint are the same blue at 8%
+ * and 16%, and they are for an outline or ghost control where the tint lands on
+ * white and reads as an arriving colour. Laid over a solid blue they are close to
+ * invisible, and this button was outline until now, so those were the tokens it
+ * would have inherited. On a fill the only legible direction is down a rung:
+ * --db-blue-700 for hover at 7.99:1 white, --db-blue-800 for press at 12.56:1.
+ */
+.refresh-button:hover:not(:disabled) {
+  background: var(--db-blue-700);
+  color: #fff;
+}
+.refresh-button:active:not(:disabled) {
+  background: var(--db-blue-800);
+  color: #fff;
+}
+/*
+ * Disabled means a read is in flight, which is a wait and not a refusal, so the
+ * button stays recognisably itself and dims as a whole. Fading only the label
+ * would leave white text on full-strength blue drifting toward unreadable at the
+ * point a reader most wants to check what it says -- and the label at that moment
+ * is "Refreshing…", which is the sentence carrying the state. Dimming the fill
+ * with it keeps the pair at the same ratio it has at rest.
+ *
+ * 0.6 rather than the primitive's 0.5: 0.5 on this blue is pale enough to read as
+ * an inert control on a heading, and this one is working.
+ */
+.refresh-button:disabled {
+  background: var(--db-blue-600);
+  color: #fff;
+  opacity: 0.6;
+  cursor: default;
+}
+/* One turn per second, slow enough to read as "working" rather than as
+   "hurrying". The button's own icon, spun rather than swapped for a second
+   glyph, so nothing on it moves but the rotation. */
+.refresh-spin {
+  animation: refresh-spin 1s linear infinite;
+}
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* The app has four of these already; this matches them. The label changes and
+   the button disables itself, so nobody who cannot watch the rotation loses
+   anything by switching it off. */
+@media (prefers-reduced-motion: reduce) {
+  .refresh-spin {
+    animation: none;
+  }
+}

@@ -1,0 +1,324 @@
+/*
+ * The astrolabe palette, type and recipes.
+ *
+ * SOURCE: docs/design-handoff-astrolabe/tokens.css, which as of bundle 6 is genuinely
+ * the astrolabe file rather than the previous design's. Every token name, every value
+ * and every recipe below is that file's. Where an earlier pass here derived something
+ * from the spec text by hand and the delivered file says otherwise, the delivered file
+ * won and the difference is recorded in AS-COMMITTED.md rather than reconciled quietly.
+ *
+ * NOTHING READS THESE YET, AND THAT IS THE POINT OF THIS PASS. The file declares the
+ * vocabulary; repointing rules at it is the next wave, on surfaces three other people
+ * are editing right now. A declaration paints nothing, so this file can land without a
+ * repaint to argue about.
+ *
+ * THREE THINGS IN THE DELIVERED FILE ARE DELIBERATELY NOT HERE, all for that reason:
+ *
+ *   1. Its `@font-face` block, which declares five `.ttf` faces from the handoff
+ *      folder's own `./fonts/`. This app already self-hosts both families as woff2 --
+ *      one variable DM Sans covering 100-900 and DM Mono at 400 and 500, see
+ *      fonts.css -- so the block would add five duplicate faces for two family names
+ *      that are already resolved, at URLs that do not exist under client/public.
+ *   2. Its `body`, `code`, `a` and `a:hover` rules. Those repaint the running app on
+ *      the commit that lands them: the base size and colour, every `<code>` and every
+ *      link. They are the surface lanes' switch to throw, not this pass's.
+ *   3. Its two `.ast-btn-*` recipes name `#FFFFFF` and `'DM Sans'` as literals. Same
+ *      values here, written as the tokens that already hold them.
+ *
+ * Where §2 is silent, this file is silent. Four things the design uses and §2 does not
+ * enumerate, established by reading every saturated literal under an R-suffixed or
+ * turn-16-and-later anchor in the design reference:
+ *
+ *   1. Amber #FFAB00 as an evaluation mass, at anchors 3cr and 4dr. §2 gives only the
+ *      muted warning family; design-spec-master.md §1 keeps amber for Benchmark Lab.
+ *      Not declared, because the two documents disagree about whether it exists and
+ *      the app already has --db-amber for exactly that job.
+ *   2. On-navy rungs for the status families. Anchor 1br, a dark treatment of the
+ *      Monitoring console, uses #3BA65E, #E65B77, #DE7921 and #8ACAFF. §2 gives
+ *      on-navy forms for exactly two things, blue and secondary text, so a status chip
+ *      on a navy band is undefined -- and the navy bands are where the constellation
+ *      theme and the working strip live.
+ *   3. Chart series. #04867D and #4299E0 appear under 1br and 6ar and are the app's
+ *      existing --chart-2 and --chart-3. §2 does not mention charts.
+ *   4. #B7D6EE is now declared, as --ast-icon-tint. It lives in the recoloured icon
+ *      SVGs rather than in any rule, and the delivered file names it anyway.
+ *
+ * WHY AN --ast-* PREFIX rather than more --db-* names in tokens.css: that file spends
+ * 60 lines on what happened the last time this app carried two vocabularies for one
+ * palette -- --pia-* aliases and --db-* primitives, live together, one rule setting
+ * --pia-gold-wash above another setting --db-amber-line. The lesson is not "never have
+ * two names", it is that two names for THE SAME COLOUR is the trap. These are
+ * different colours: astrolabe's green is #35706B where DuBois's is #277C43, so
+ * landing this as --db-green-600 would repaint every status chip in the app in a commit
+ * that claims to add tokens. The two sets sit side by side, distinguishable at every
+ * call site, until the DuBois set is retired wholesale rather than mutated in place.
+ *
+ * The exception is the type scale and the two radii, which ARE the same numbers the app
+ * already declares. They are restated here as literals, exactly as the delivered file
+ * writes them, so that the astrolabe set survives the DuBois set's retirement intact --
+ * an alias would break at precisely the moment it mattered. astrolabe-tokens.test.ts
+ * pins each one to its existing counterpart, so the duplication cannot drift while both
+ * are live.
+ */
+
+:root,
+:root:not(.light),
+.dark {
+  /*
+   * ---- Core palette (§2) ----
+   *
+   * The whole of the brand. Anything on screen that is not one of these, one of the
+   * text or border rungs below, or one of the status families, is a colour somebody
+   * reached past this block to write.
+   *
+   * There is no orange here and there is not going to be. #FF3621 exists in this
+   * repository in exactly two files, client/src/assets/brand/databricks-symbol-color.svg
+   * and databricks-logo-full-color.svg, which are the Databricks attribution and the
+   * login gate's logo. Those are the only non-palette pixels the design permits, and a
+   * token would make it reachable from anywhere.
+   */
+  --ast-white: #ffffff;
+  --ast-navy: #11171c; /* ink structure, dark bands, wordmark */
+  --ast-blue: #2272b4; /* action, identity, agent-at-work. Same value as --db-blue-600 */
+  --ast-blue-on-dark: #6faedd; /* blue's form on navy surfaces */
+  --ast-ice: #f0f6fb; /* AI-context surface. Replaces oat --db-warm #F9F7F4 everywhere */
+  --ast-icon-tint: #b7d6ee; /* the light tint inside the recoloured product icons */
+
+  /*
+   * ---- Text (§2) ----
+   *
+   * The first three are the values --db-ink, --db-body and --db-slate already carry, so
+   * this half of the palette does not change. The fourth is new: secondary text on
+   * navy, which the app has never needed because it has never had a navy surface with
+   * prose on it.
+   */
+  --ast-text: #161616; /* body */
+  --ast-text-long: #3a3838; /* long-form copy */
+  --ast-text-secondary: #6f6f6f; /* secondary, placeholders, eyebrows */
+  --ast-text-on-dark-secondary: #8a9aa3; /* secondary, on a navy surface */
+
+  /* ---- Borders and fills (§2) ---- */
+  --ast-hairline: #ebebeb; /* cards, separators. The only thin border */
+  --ast-border-input: #cbcbcb; /* inputs and outline buttons */
+  --ast-fill-band: #f7f7f7; /* card header bands */
+
+  /*
+   * ---- Status, five families ----
+   *
+   * POSITIVE, NEGATIVE AND WARNING CARRY A BORDER TOKEN. NEUTRAL AND INFO DO NOT, and
+   * the delivered file is explicit about it by omission: it declares fill and text for
+   * those two and no border, so their pills fall through to the recipe's transparent
+   * edge. That agrees with the design reference, where every #F2F6F9 and #DDEAF4 chip
+   * is fill and text only, and with role-badges.md: "no border ... Do not add a border
+   * to any state", because a bordered pill at 4px radius is what this app's buttons
+   * look like. --ast-pill--neutral-outline is the outlined alternative §2 offers.
+   */
+  --ast-pos-text: #35706b;
+  --ast-pos-border: #c5ddd9;
+  --ast-pos-fill: #f4f9f8;
+
+  --ast-neg-text: #a04a62;
+  --ast-neg-border: #e3c4cc;
+  --ast-neg-fill: #faf3f5;
+
+  --ast-warn-text: #8a6a38;
+  --ast-warn-border: #e0d3b8;
+  --ast-warn-fill: #f9f6ef;
+  /* The rung the warning family uses at smaller or heavier type, and the fill behind a
+     mono tag inside a warning context. 122, 94, 50 is #7A5E32, so the tag follows the
+     deep rung if it ever moves. */
+  --ast-warn-deep: #7a5e32;
+  --ast-warn-mono-fill: rgba(122, 94, 50, 0.08);
+
+  --ast-neutral-text: #46596b;
+  --ast-neutral-fill: #f2f6f9;
+
+  /* Info also carries role badges and table chips. Same value as --db-blue-700, which
+     is the blue's hover rung; one hex, two jobs, and they do not collide because one is
+     a state and the other is a foreground on its own tint. */
+  --ast-info-text: #0e538b;
+  --ast-info-fill: #ddeaf4;
+
+  /* ---- Type scale (§3) ---- */
+  --ast-fs-11: 11px;
+  --ast-fs-12: 12px;
+  --ast-fs-13: 13px; /* base */
+  --ast-fs-14: 14px;
+  --ast-fs-16: 16px;
+  --ast-fs-18: 18px;
+  --ast-fs-22: 22px;
+  --ast-fs-32: 32px;
+
+  /* ---- Radii ---- */
+  --ast-radius-control: 4px; /* buttons, pills, inputs */
+  --ast-radius-card: 8px; /* cards, rows, bands */
+
+  /*
+   * ---- Tracking and the separator ----
+   *
+   * Not in the delivered file, and additions rather than disagreements: §3 sets the
+   * scale at letter-spacings it states in prose and gives the separator as a rule.
+   * Both are values a rule has to name, so they are declared here and reported as
+   * additions in AS-COMMITTED.md.
+   */
+  --ast-tracking-eyebrow: 0.06em; /* 11px 700 uppercase */
+  --ast-tracking-tight: -0.01em; /* 18px and 22px headings, and the wordmark */
+  --ast-tracking-hero: -0.015em; /* 32px hero only */
+
+  /* §3 and §7 make this a rule rather than a preference: the separator is " · " and
+     there are no em dashes. A token means the one place it is written is here, and a
+     review can see a rule that spells it some other way. */
+  --ast-separator: ' \00b7 ';
+}
+
+/*
+ * ---- One pill recipe, five families ----
+ *
+ * 1px border, tint fill, 4px radius, 11px/500 text, per §2 and the delivered file.
+ *
+ * NEVER COLOUR ALONE. §2's phrase is a requirement about the markup rather than about
+ * these rules: the chip has to say what it means in words, and the border and the tint
+ * mean a reader who cannot separate the five hues still sees five different chips.
+ * Nothing here can enforce a label -- a rule cannot see whether its element has text in
+ * it -- so the requirement is recorded where the recipe is and belongs in the
+ * per-surface tests that render one.
+ *
+ * The transparent base border is what lets neutral and info carry no visible edge
+ * without changing size: the box is 1px in every family, and the two that have no
+ * border token simply keep the transparent one.
+ */
+.ast-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--ast-radius-control);
+  font-size: var(--ast-fs-11);
+  font-weight: 500;
+}
+
+.ast-pill--pos {
+  color: var(--ast-pos-text);
+  background: var(--ast-pos-fill);
+  border-color: var(--ast-pos-border);
+}
+
+.ast-pill--neg {
+  color: var(--ast-neg-text);
+  background: var(--ast-neg-fill);
+  border-color: var(--ast-neg-border);
+}
+
+.ast-pill--warn {
+  color: var(--ast-warn-text);
+  background: var(--ast-warn-fill);
+  border-color: var(--ast-warn-border);
+}
+
+.ast-pill--neutral {
+  color: var(--ast-neutral-text);
+  background: var(--ast-neutral-fill);
+}
+
+/* No fill, a real edge. For a chip that has to sit on a tinted surface, where a tint on
+   a tint reads as a rendering fault. */
+.ast-pill--neutral-outline {
+  color: var(--ast-neutral-text);
+  border-color: var(--ast-border-input);
+}
+
+.ast-pill--info {
+  color: var(--ast-info-text);
+  background: var(--ast-info-fill);
+}
+
+/*
+ * ---- Buttons ----
+ *
+ * Primary is the one blue, and Refresh is always this style. The `font` shorthand is
+ * the delivered file's, which resets line-height to normal deliberately: these are
+ * fixed-height controls and a 1.5 line-height inside a 32px box is what pushes a label
+ * off centre.
+ */
+.ast-btn-primary {
+  height: 32px;
+  padding: 0 14px;
+  background: var(--ast-blue);
+  border: 1px solid var(--ast-blue);
+  border-radius: var(--ast-radius-control);
+  color: var(--ast-white);
+  font: 500 var(--ast-fs-13) var(--font-sans);
+}
+
+.ast-btn-secondary {
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--ast-radius-control);
+  color: var(--ast-text);
+  font: 500 var(--ast-fs-13) var(--font-sans);
+}
+
+/*
+ * ---- Numerals: a placement rule, which is why a token cannot enforce it ----
+ *
+ * THE BINDING RULE IS WHERE THE NUMBER SITS, NOT WHAT IT IS MARKED WITH. Every figure
+ * in a column, a table cell, a stat value or a right-aligned meta slot renders in DM
+ * Mono. DM Sans numerals are allowed only inline in prose, where nothing has to line up.
+ *
+ * The delivered tokens.css settled this after the fonts were measured, and the reason is
+ * in the font files rather than in anybody's preference:
+ *
+ *   - DMSans-variable.woff2 declares no `tnum` feature. Its GSUB carries calt, ccmp,
+ *     dnom, frac, liga, locl and numr, and nothing else. `font-variant-numeric:
+ *     tabular-nums` therefore has nothing to switch on and does nothing at all in DM
+ *     Sans -- silently, which is the worst way for a layout rule to fail.
+ *   - Its digits are proportional and not by a small margin: at 1000 units per em the
+ *     advances are 656, 342, 589, 598, 614, 606, 624, 538, 604, 624. A `1` is just over
+ *     half the width of a `0`, so a column of DM Sans figures cannot line up however it
+ *     is marked.
+ *   - DMMono-Regular is 600 units for all ten digits. Tabular, by being monospaced.
+ *
+ * So `font-variant-numeric` below is belt and braces for a font file that does carry the
+ * feature -- if a tnum-capable DM Sans is ever sourced, this class can drop the family
+ * and nothing else changes -- and `font-family` is the part that works today.
+ *
+ * fonts.css already states the assumption this corrects: "the numerals in the trace
+ * tables and the metric tiles are laid out on the assumption that they are tabular". In
+ * DM Sans they never were. The 50 sites in this app asking DM Sans for tabular figures
+ * are inert, and the subset of them in columns is wrong; both are listed in
+ * docs/astrolabe-migration-inventory.md for the surface lanes rather than fixed here.
+ */
+.ast-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* An identifier, SQL fragment, id, hash or configured value. The delivered file pairs
+   this with `code`, which this pass leaves alone; see the header. */
+.ast-mono {
+  font-family: var(--font-mono);
+}
+
+/*
+ * ---- Type utilities ----
+ */
+
+.ast-eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--ast-fs-11);
+  font-weight: 700;
+  letter-spacing: var(--ast-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--ast-text-secondary);
+}
+
+/* The separator, so that a list of facts is punctuated in one place. Written as
+   generated content rather than typed into copy, which is what makes "no em dashes"
+   checkable rather than a habit. */
+.ast-sep::before {
+  content: var(--ast-separator);
+  color: var(--ast-text-secondary);
+}

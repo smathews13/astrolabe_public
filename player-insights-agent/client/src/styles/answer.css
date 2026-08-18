@@ -1,0 +1,374 @@
+/* The agent's own output is signed with a brand rule across the top, matching the
+   one in the header, and it moves with it: identity is blue.
+
+   The reasoning here used to be "not orange, even though the agent wrote the card,
+   because orange marks what is happening right now". That contrast no longer picks
+   anything out, because there is no orange left to contrast with: this palette
+   does not carry one, the agent at work is blue, and #FF3621 renders nowhere in
+   the app but the bricks symbol in the Databricks attribution. Blue is the whole
+   answer rather than the second of two.
+
+   The card no longer floats: the drop shadow that separated it from the page went
+   with the page's gradient, and the radius comes down to the 8px a card takes,
+   from AppKit's 12px, which is a third radius the handoff collapses away. */
+.answer-card {
+  border: 1px solid var(--ast-hairline);
+  border-top: 3px solid var(--ast-blue);
+  border-radius: var(--ast-radius-card);
+  box-shadow: none;
+  margin-bottom: 26px;
+}
+/* A plan is the one card that is waiting on the user, so it is the most emphatic
+   thing in the transcript until it resolves: a heavier blue edge and a wash, blue
+   because what the card is waiting for is a decision and every other thing you act
+   on in this app is that colour. Once resolved it drops back to an ordinary
+   hairline and the ordinary card surface. */
+.plan-card {
+  border: 1.5px solid var(--ast-blue);
+  border-radius: var(--ast-radius-card);
+  box-shadow: none;
+  /* Ice, which replaces oat as the AI-context surface. The plan is the one card
+     in the transcript that is waiting on the reader, and the wash is what says
+     so until it resolves. */
+  background: var(--ast-ice);
+  margin-bottom: 26px;
+}
+.plan-card.resolved {
+  border: 1px solid var(--ast-hairline);
+  background: var(--ast-white);
+}
+/*
+ * The transcript's own gutters, over AppKit's.
+ *
+ * The library gives a card 24px of vertical padding, 24px inside its header and
+ * content, and 24px between every section. The design's card is 24/28 with 16px
+ * between sections, which is the difference between a card holding ten sections
+ * and a card holding ten pages. The two utilities being overridden are Tailwind's
+ * and are layered, so these unlayered rules win without needing !important.
+ */
+.answer-card,
+.plan-card {
+  gap: 16px;
+}
+.answer-card > [data-slot='card-header'],
+.answer-card > [data-slot='card-content'],
+.plan-card > [data-slot='card-header'],
+.plan-card > [data-slot='card-content'] {
+  padding-inline: 28px;
+}
+/*
+ * The answer card's header: the mark, the provenance chips, and the takeaway.
+ *
+ * The mark used to be a flex sibling of the whole chip+takeaway column, so
+ * `items-start` aligned it against the top of a block that grows every time the
+ * takeaway wraps to another line -- and a 32px mark beside a short chip then
+ * read as floating above the header rather than sitting on it. This is a
+ * two-column grid instead: the mark in the first column, the chip row and the
+ * takeaway stacked in the second so the takeaway stays indented under the chips.
+ * `align-items: center` centres each item within its own row, so the mark and
+ * the chip row co-centre in the first row -- the header row -- whatever the
+ * takeaway below does. The alignment is the mark against that one row, not a
+ * per-icon nudge, so it holds for one line or several and for every chip tone.
+ */
+.answer-card-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
+}
+.answer-card-head > .agent-avatar {
+  grid-column: 1;
+  grid-row: 1;
+}
+.answer-card-head > .answer-card-badges {
+  grid-column: 2;
+  grid-row: 1;
+}
+.answer-card-head > .answer-takeaway {
+  grid-column: 2;
+  grid-row: 2;
+}
+/*
+ * The provenance chip: where the figures under this takeaway came from.
+ *
+ * THREE TONES, WHERE THERE WERE TWO. Live, mixed and stored, which is what the
+ * server actually distinguishes and what the design reference draws at 11ar.
+ * They used to be two because the chip was coloured from AppKit's `variant`,
+ * which has no rung between "fine" and "failure", so a mixed answer -- live
+ * narrative over stored figures -- wore the same chip as one where nothing had
+ * run. Those are different amounts of wrong and a reader has to act on them
+ * differently. Which chip appears is decided in degraded-answer.ts from what the
+ * server stated, never from this file and never from the prose.
+ *
+ * Deliberately NOT the action colour, even though blue owns identity elsewhere: a
+ * blue pill directly above a heading reads as a control, and this is a statement.
+ * Ink is the darkest neutral fill rather than an accent, so it makes the claim
+ * without spending one of the five meanings on it.
+ *
+ * The pill radius stays at 999px, which is the one place this app keeps it. It
+ * is the design reference's own drawing for these three at 11ar and 3ar, and the
+ * distinction is legible: everything else that looks like this is a 4px status
+ * chip inside a table or a row, and this is a statement above a heading.
+ */
+.provenance-chip {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--ast-fs-11);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.provenance-chip[data-tone='live'] {
+  background: var(--ast-navy);
+  border-color: transparent;
+  color: var(--ast-white);
+}
+/* The warning family, because a mixed answer IS an answer to the question asked
+   and its figures are not yours. Tinted rather than solid: this one qualifies
+   the answer under it, and a solid mass above a heading reads as a refusal. */
+.provenance-chip[data-tone='mixed'] {
+  background: var(--ast-warn-fill);
+  border: 1px solid var(--ast-warn-border);
+  color: var(--ast-warn-text);
+}
+/* Solid, and the one chip in the app that is. A representative response is not
+   an answer to the question that was asked, and the design reference draws it as
+   a filled #A04A62 for that reason -- 5.93:1 with white on it, so the label is
+   still type at 11px. The mixed chip above it is the tinted rung of the same
+   idea, which is what keeps the two apart at a glance. */
+.provenance-chip[data-tone='stored'] {
+  background: var(--ast-neg-text);
+  border-color: transparent;
+  color: var(--ast-white);
+}
+/* The plan's state: warning while it waits on a decision, positive once it has
+   one. Both colours and the whole of the box come from `.ast-pill` and the
+   family class PlanCard.tsx sets, so nothing is declared here. `data-state`
+   stays on the element because it is what a test and a reader of the DOM read
+   the state off; it no longer selects anything. */
+/*
+ * Break the plan's text wherever it has to break.
+ *
+ * The answer card's own version of this list is in answer-body.css and is
+ * scoped to `.answer-card`, which left the plan out of it. The plan is the
+ * surface that needs it most: an answer's takeaway is a sentence of English,
+ * while a plan step opens "Read
+ * <catalog>.<schema>.gold_title_daily_summary" -- one word, no spaces, wider
+ * than the column it lands in at every breakpoint. Without a break opportunity
+ * that word sets the floor for its whole grid column, and the card overflows
+ * rather than wrapping.
+ *
+ * `min-width: 0` for the same reason on the other axis: a grid and a flex child
+ * both size to their content by default, so the floor the long word sets is a
+ * floor the layout is obliged to honour until it is told it may not.
+ */
+.plan-card [data-slot='card-description'],
+.plan-card [data-slot='card-title'],
+.plan-step > div,
+.plan-step strong,
+.plan-step p {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.plan-steps {
+  display: grid;
+  gap: 8px;
+}
+.plan-step {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--ast-hairline);
+  border-radius: var(--ast-radius-card);
+  padding: 12px 16px;
+  /* White rather than a tint of the card. While the plan is unresolved the card
+     itself is the wash, so a step tinted from it disappears into it; on the
+     resolved card the hairline is what separates the rows and the fill is the
+     same white either way. */
+  background: var(--ast-white);
+}
+/*
+ * The step numerals. White on #2272B4 is 5.08:1.
+ *
+ * THE FACE COMES FROM `.ast-num` ON THE MARKUP, and this rule no longer asks for
+ * tabular figures, because asking was the whole of what it did. These sit in a
+ * column -- one per step, at the same offset down the card -- and the reason
+ * given for `font-variant-numeric` here was that a ten-step plan should not have
+ * a wider circle at 10 than at 9. The circle is 22px either way, so that part was
+ * never at risk; what was at risk is the digits inside it, and DM Sans could not
+ * line those up however this rule was written. It declares no `tnum` feature and
+ * its digits are proportional, a `1` being just over half the width of a `0`.
+ */
+.plan-step > span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--ast-blue);
+  color: var(--ast-white);
+  font-size: var(--ast-fs-12);
+  font-weight: 700;
+}
+.plan-step strong {
+  font-size: var(--ast-fs-13);
+  font-weight: 700;
+}
+/*
+ * The product mark on a step that names one, sitting left of the title.
+ *
+ * `text-bottom` rather than `middle`: the titles wrap, and a mark centred on the
+ * x-height of a two-line lead floats between the lines. The margin is the
+ * handoff's 6-8px, taken at the low end because the lead is bold and already
+ * reads as one run.
+ */
+.plan-step strong > .brand-icon {
+  margin-right: 6px;
+  vertical-align: text-bottom;
+}
+.plan-step p {
+  color: var(--ast-text-long);
+  font-size: var(--ast-fs-13);
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+.plan-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* Green, and the tint rather than the solid: what this alert reports is that
+   nothing has run yet, or that what ran is what was approved, which is the
+   reachable-or-saved meaning. The positive family, which is the same three values
+   the plan's own state chip and the Sources rows take, so the reassurance and the
+   chip above it cannot end up two different greens. #35706B is 4.99:1 on #F4F9F8,
+   so the icon and any type in it are legible. */
+[data-slot='alert'].plan-reassurance {
+  border-color: var(--ast-pos-border);
+  background: var(--ast-pos-fill);
+}
+[data-slot='alert'].plan-reassurance > svg {
+  color: var(--ast-pos-text);
+}
+/* The decision, right-aligned: the outline "Revise request" then the primary
+   "Approve and run", so the action that starts a query is the last thing under
+   the plan it will run. */
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.plan-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+/*
+ * The takeaway, at the size the type scale reserves for it.
+ *
+ * It was a clamp up to 28px, which is the hero size on a page whose own h2 is
+ * 22px: the one sentence in the card competed with the page rather than heading
+ * the card. 18px/700 at 1.35 is the handoff's, and `pretty` keeps a two-line
+ * takeaway from leaving one word alone on the second line.
+ */
+.answer-takeaway {
+  font-size: var(--ast-fs-18);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+/* ── The agent's Markdown ───────────────────────────────────────────────────
+ *
+ * The orchestrator writes headings, bullets, bold and code spans, and until
+ * this block existed the app printed the characters. See answer-markdown.ts for
+ * the parser; these are the rules that make its output read as one answer
+ * rather than as a document that wandered into a chat card.
+ *
+ * Tailwind's preflight strips list markers and every default margin, so the
+ * spacing and the bullets here are stated rather than restored.
+ */
+.answer-prose {
+  /* Body grey rather than the ink the headings take: this is long-form prose and
+     #3A3838 is what the design sets it in, at 11.65:1 on white. */
+  color: var(--ast-text-long);
+  text-wrap: pretty;
+}
+.answer-prose > * {
+  margin: 0;
+}
+.answer-prose > * + * {
+  margin-top: 12px;
+}
+/* Air above a section, none below it: a heading belongs to the thing under it,
+   and equal gaps either side would leave it floating between two paragraphs. */
+.answer-prose > * + .answer-heading {
+  margin-top: 20px;
+}
+.answer-prose > .answer-heading + * {
+  margin-top: 6px;
+}
+/*
+ * Sized as the label on a section, not as a title.
+ *
+ * The card already has a heading -- the takeaway -- and the agent's
+ * `## DATA PACKAGE` sits underneath it. At heading sizes the two compete and the
+ * answer looks like a report; at body size with the weight up, it reads as what
+ * it is.
+ */
+.answer-heading {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ast-text);
+}
+.answer-subheading {
+  font-size: 0.94em;
+  color: var(--ast-text-secondary);
+}
+.answer-list {
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+}
+ul.answer-list {
+  list-style: disc outside;
+}
+ol.answer-list {
+  list-style: decimal outside;
+}
+/* An identifier, and usually a long one. `anywhere` rather than a scrollbar:
+   the chip sits inside a sentence, and a sentence does not scroll. */
+.answer-code {
+  /* --font-mono is declared now, in tokens.css. It never was until this revamp, so
+     every one of these fallback lists was what actually chose the face. They are
+     left in place: they cost nothing and they are still what renders if the
+     self-hosted DM Mono fails to load. */
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+  /* The info chip rather than the grey tint it was. What is inside these
+     backticks is a table or a column name in nine cases out of ten, and §3 sets
+     an entity name in prose as a mono tag "chip-coloured elsewhere" -- the amber
+     mono fill belongs to the caveats, which have a wash of their own to sit on;
+     this one is on white. #0E538B on #DDEAF4 is 6.34:1, so the identifier is
+     still type at 0.88em. The 3px radius and the 1px 5px are the same tag the
+     Keep in mind bullets carry, so an identifier is one shape everywhere on the
+     card and only its colour says which context it is in. */
+  background: var(--ast-info-fill);
+  color: var(--ast-info-text);
+  border-radius: 3px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+/* A link the agent wrote, in the action colour with a solid underline. Solid, and
+   not the dotted rule the entity links carry: dotted now means "this names a table
+   or a column and you can go and look at it", which is a different offer from a
+   link out, and the two should not be confused for each other. */
+.answer-link {
+  color: var(--ast-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

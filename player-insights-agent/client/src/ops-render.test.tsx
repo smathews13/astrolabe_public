@@ -1,0 +1,1360 @@
+/**
+ * What a reader actually sees on Ops, asserted against rendered markup.
+ *
+ * Rendered rather than inspected, in the pattern `connections-render.test.tsx`
+ * established and `monitoring-render.test.tsx` follows: this repository has been
+ * bitten by screens that were wrong while every assertion about their source was
+ * true. The three bodies take a state rather than fetching into one, so every
+ * state can be driven here without a browser, which is just as well because this
+ * repository is not allowed to run one.
+ *
+ * THE PROPERTY MOST OF THIS FILE IS ABOUT is that the three blocks are
+ * independent. It is the design's central claim and the one that is quietly lost
+ * first, because a refactor that merges three fetches into one looks like a
+ * tidy-up and reads like an improvement. Health is a live probe, cost is a
+ * workspace-wide billing query and traffic is a query against the app's own
+ * store; behind one route, the slowest and least readable of the three decides
+ * when the other two appear.
+ *
+ * PIXELS ARE NOT VERIFIED BY ANY OF THIS. These tests read the words a person
+ * would read. Nothing here says the layout is right.
+ */
+import { readFileSync } from 'node:fs';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
+import { describe, expect, it } from 'vitest';
+
+import { CostBody, HealthBody, LatencyBody, OpsPage, TrafficBody, type Block } from './OpsPage';
+import { REFRESH_LABEL } from './RefreshControl';
+import type {
+  OpsCostPayload,
+  OpsHealthPayload,
+  OpsLatencyPayload,
+  OpsTrafficPayload,
+} from '../../shared/ops-contract';
+
+function text(markup: string): string {
+  return markup
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function render(node: React.ReactElement): string {
+  return text(renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>));
+}
+
+/** The markup itself, for the claims that are about a class or an href. */
+function markupOf(node: React.ReactElement): string {
+  return renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
+}
+
+function block<T>(data: T | null, overrides: Partial<Block<T>> = {}): Block<T> {
+  return { data, busy: false, failed: '', refresh: () => {}, ...overrides };
+}
+
+/* ── Fixtures ────────────────────────────────────────────────────────────── */
+
+function health(overrides: Partial<OpsHealthPayload> = {}): OpsHealthPayload {
+  return {
+    checkedAt: '2026-08-15T12:00:00Z',
+    dependencies: [
+      {
+        id: 'warehouse',
+        kind: 'sql-warehouse',
+        connectionsId: 'warehouse',
+        label: 'SQL warehouse',
+        name: 'a-warehouse-id',
+        result: 'answered',
+        lastCheckedAt: '2026-08-15T12:00:00Z',
+        reason: '',
+      },
+      {
+        id: 'genie',
+        kind: 'genie-space',
+        connectionsId: 'genie',
+        label: 'Genie space',
+        name: 'a-space-id',
+        result: 'did-not-answer',
+        lastCheckedAt: '2026-08-15T12:00:00Z',
+        reason: 'The space returned 403 for this user.',
+      },
+      {
+        // Empty on purpose: the index is the case the contract calls out, where a
+        // probe has no Connections row to land on, so no link should be drawn.
+        id: 'index',
+        kind: 'vector-index',
+        connectionsId: '',
+        label: 'Vector search index',
+        name: 'an-index',
+        result: 'not-checked',
+        lastCheckedAt: '',
+        reason: '',
+      },
+    ],
+    platform: [
+      { id: 'endpoint', label: 'Serving endpoint', state: 'Ready', read: true },
+      { id: 'app', label: 'App', state: 'Running', read: true },
+    ],
+    app: {
+      telemetry: 'not-enabled',
+      variable: 'PLAYER_INSIGHTS_TELEMETRY_SCHEMA',
+      table: '',
+      grant: null,
+      insightsHref: 'https://example.test/apps/pia/insights',
+      requestsPerHour: [],
+      lastServedAt: '',
+      recordingSince: '',
+      signInsPerDay: [],
+      errors: { count: 0, recent: [] },
+      reason: '',
+    },
+    reason: '',
+    ...overrides,
+  };
+}
+
+function cost(overrides: Partial<OpsCostPayload> = {}): OpsCostPayload {
+  return {
+    state: 'ready',
+    grant: null,
+    reason: '',
+    currency: 'USD',
+    throughDay: '2026-08-14',
+    readAt: '2026-08-15T12:00:00Z',
+    tiles: [
+      {
+        id: 'endpoint',
+        label: 'Agent endpoint',
+        quality: 'per-token',
+        amount: 1.5,
+        basis: 'total-in-range',
+        population: 'This endpoint',
+        unavailable: '',
+        remedy: '',
+        note: '',
+      },
+      {
+        id: 'index-endpoint',
+        label: 'Vector search endpoint',
+        quality: 'rate',
+        amount: 4,
+        basis: 'per-day',
+        population: 'Whole workspace',
+        unavailable: '',
+        remedy: '',
+        note: '',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function traffic(overrides: Partial<OpsTrafficPayload> = {}): OpsTrafficPayload {
+  return {
+    readAt: '2026-08-15T12:00:00Z',
+    reason: '',
+    unread: '',
+    questionsPerDay: [{ day: '2026-08-14', count: 12 }],
+    failuresByCause: [{ key: 'WAREHOUSE_UNAVAILABLE', label: 'Warehouse unavailable', count: 2 }],
+    refusalsByCause: [{ key: 'NOT_PERMITTED', label: 'Not permitted', count: 40 }],
+    toolCalls: [{ key: 'genie', label: 'Genie', count: 30 }],
+    runsInRange: 50,
+    ...overrides,
+  };
+}
+
+/* ── The three blocks are independent ────────────────────────────────────── */
+
+describe('one block failing', () => {
+  it('does not stop the other two rendering', () => {
+    // The design's central claim, and the one a refactor loses first.
+    const broken = render(<CostBody block={block<OpsCostPayload>(null, { failed: 'The server answered 500.' })} />);
+    const stillFine = render(<HealthBody block={block(health())} />);
+    const alsoFine = render(<TrafficBody block={block(traffic())} />);
+
+    expect(broken).toContain('Cost could not be read');
+    expect(stillFine).toContain('SQL warehouse');
+    expect(alsoFine).toContain('Questions per day');
+  });
+
+  it('says which block it was, so the page does not read as broken', () => {
+    expect(render(<CostBody block={block<OpsCostPayload>(null, { failed: 'x' })} />)).toContain(
+      'Cost could not be read'
+    );
+    expect(render(<HealthBody block={block<OpsHealthPayload>(null, { failed: 'x' })} />)).toContain(
+      'Health could not be read'
+    );
+    expect(render(<TrafficBody block={block<OpsTrafficPayload>(null, { failed: 'x' })} />)).toContain(
+      'Traffic could not be read'
+    );
+  });
+
+  /**
+   * The reassurance line under a failed block is gone: which block failed is the
+   * first line of the panel, and the other two blocks are visibly populated
+   * beside it. What has to survive is the block's own name and the exact reason.
+   */
+  it('carries the exact reason and nothing else', () => {
+    const broken = render(
+      <TrafficBody block={block<OpsTrafficPayload>(null, { failed: 'the warehouse refused: 403' })} />
+    );
+    expect(broken).toContain('the warehouse refused: 403');
+    expect(broken).not.toMatch(/read separately and are not affected/);
+  });
+
+  it('offers a retry for that block alone', () => {
+    // The shared control, not a fifth spelling of it. It said "Try this block
+    // again"; which block is the first line of the panel, so the label was not
+    // carrying that, and the app had already collapsed four of these into one
+    // component. Asserted by class as well as word: the word alone would pass
+    // against a hand-rolled button that happened to say Refresh.
+    const failed = <CostBody block={block<OpsCostPayload>(null, { failed: 'x' })} />;
+    expect(render(failed)).toContain(REFRESH_LABEL);
+    // On the raw markup, because `render` strips the tags the class lives in.
+    expect(renderToStaticMarkup(<MemoryRouter>{failed}</MemoryRouter>)).toContain('refresh-button');
+  });
+
+  it('carries its own read time rather than the page having one', () => {
+    // Three reads at three moments. A single timestamp would be a claim about
+    // all three that is true of at most one.
+    const one = render(<CostBody block={block(cost({ readAt: '2026-08-15T12:00:00Z' }))} />);
+    const other = render(<TrafficBody block={block(traffic({ readAt: '2026-08-15T09:00:00Z' }))} />);
+    expect(one).toMatch(/Read /);
+    expect(other).toMatch(/Read /);
+  });
+});
+
+/* ── Health ──────────────────────────────────────────────────────────────── */
+
+describe('the health block', () => {
+  it('gives every dependency a result in words, not only a colour', () => {
+    const markup = render(<HealthBody block={block(health())} />);
+    expect(markup).toContain('Answered');
+    expect(markup).toContain('Did not answer');
+    expect(markup).toContain('Not checked');
+  });
+
+  it('renders a check that did not run as its own state rather than as a failure', () => {
+    const markup = render(<HealthBody block={block(health())} />);
+    // The vector index row was never checked. It must not be reported as a
+    // fault, which would send somebody to investigate a service that is fine.
+    expect(markup).toContain('Not checked');
+    expect(markup).not.toContain('Vector search index Did not answer');
+  });
+
+  it("shows the probe's own reason rather than a rewritten one", () => {
+    expect(render(<HealthBody block={block(health())} />)).toContain('The space returned 403 for this user.');
+  });
+
+  /**
+   * The distinction that matters is that uptime is the platform's reading and the
+   * dependency table is this app's. It is carried by the platform pills standing
+   * apart from the table and by the link out to the platform record, not by
+   * sentences explaining either. Two of those sentences said the same thing on
+   * every check and the third was on screen explaining a bug.
+   */
+  it('keeps the platform readings apart from what this app probed', () => {
+    const markup = render(<HealthBody block={block(health())} />);
+    // The platform's two readings, as pills and as states rather than prose.
+    expect(markup).toContain('Serving endpoint Ready');
+    expect(markup).toContain('App Running');
+    // The app's own probe, in the table, with its three states intact.
+    expect(markup).toContain('Answered');
+    expect(markup).toContain('Did not answer');
+    expect(markup).toContain('Not checked');
+  });
+
+  it('states a platform reading without explaining how it was taken', () => {
+    const markup = render(<HealthBody block={block(health())} />);
+    expect(markup).not.toMatch(/measured by Databricks/);
+    expect(markup).not.toMatch(/was not read on this check/);
+    expect(markup).not.toMatch(/Why the app cannot measure this/);
+    expect(markup).not.toMatch(/so the container is up/);
+  });
+
+  it('counts error lines without editorialising the count', () => {
+    const markup = render(
+      <HealthBody
+        block={block(
+          health({ app: { ...health().app, telemetry: 'reading', errors: { count: 3, recent: [] } } })
+        )}
+      />
+    );
+    expect(markup).toContain('3 error lines in this range');
+    expect(markup).not.toMatch(/out of everything the app logged/);
+    // The live timestamp stays. It is the only thing on the block that says
+    // whether anything has reached this deployment recently.
+    expect(markup).toContain('Most recent request');
+  });
+
+  /**
+   * ZERO IS NOT A COUNT, which is the tab's rule and the one this line broke.
+   *
+   * "0 error lines in this range" draws the eye to a figure a reader then has to
+   * read in order to discover that nothing happened, which the absence of the
+   * line says on its own. The timestamp beside it is a different kind of fact
+   * and stays: it is the only thing on the block that says whether anything has
+   * reached this deployment at all.
+   */
+  it('renders no error line at all rather than a zero', () => {
+    const markup = render(
+      <HealthBody
+        block={block(
+          health({ app: { ...health().app, telemetry: 'reading', errors: { count: 0, recent: [] } } })
+        )}
+      />
+    );
+    expect(markup).not.toContain('0 error lines');
+    expect(markup).not.toMatch(/error lines in this range/);
+    expect(markup).toContain('Most recent request');
+  });
+
+  it('links out to the platform record instead of paraphrasing it', () => {
+    const markup = renderToStaticMarkup(<MemoryRouter><HealthBody block={block(health())} /></MemoryRouter>);
+    expect(markup).toContain('https://example.test/apps/pia/insights');
+  });
+
+  it('explains telemetry being off rather than drawing an empty chart', () => {
+    const markup = render(<HealthBody block={block(health())} />);
+    expect(markup).toContain('App telemetry is off');
+    expect(markup).toContain('PLAYER_INSIGHTS_TELEMETRY_SCHEMA');
+  });
+
+  it('offers a statement to run when the telemetry table cannot be read', () => {
+    const payload = health({
+      app: {
+        ...health().app,
+        telemetry: 'no-grant',
+        table: 'a_catalog.a_telemetry_schema.otel_logs',
+        grant: {
+          object: 'a_catalog.a_telemetry_schema',
+          privilege: 'SELECT',
+          statement: 'GRANT SELECT ON SCHEMA a_catalog.a_telemetry_schema TO `someone@example.test`;',
+        },
+      },
+    });
+    const markup = render(<HealthBody block={block(payload)} />);
+    expect(markup).toContain('You cannot read the telemetry table');
+    expect(markup).toContain('GRANT SELECT ON SCHEMA');
+  });
+
+  it('says an empty telemetry table is expected rather than a sign of no traffic', () => {
+    const payload = health({
+      app: { ...health().app, telemetry: 'no-rows-yet', table: 'a_catalog.a_schema.otel_logs', reason: '' },
+    });
+    const markup = render(<HealthBody block={block(payload)} />);
+    expect(markup).toContain('No telemetry history yet');
+    expect(markup).toMatch(/does not backfill/);
+    // In the line itself. The paragraph behind the "Why" disclosure that used to
+    // carry this has gone, along with every other one on the tab.
+    expect(markup).not.toContain('Why');
+  });
+
+  /**
+   * A CHECK, NOT A READ, and the band says which.
+   *
+   * These rows are live probes against other people's services, and the cost and
+   * traffic bands beside them are queries against tables. One word for both would
+   * be a claim that the three timestamps mean the same thing, which is the claim
+   * this page's three separate reads exist to avoid.
+   */
+  it('dates the health band as a check rather than as a read', () => {
+    expect(render(<HealthBody block={block(health())} />)).toMatch(/Checked /);
+    // And says so even before anything has run, rather than going blank.
+    expect(render(<HealthBody block={block(health({ checkedAt: '' }))} />)).toContain('Not checked yet');
+  });
+
+  /**
+   * A row lands on the same dependency's Connections row, where the server said
+   * there is one.
+   *
+   * The empty `connectionsId` is the case the contract calls out and the one that
+   * matters: the Vector Search endpoint is discovered rather than configured, so
+   * a link built from the id alone would land a reader on Connections with
+   * nothing highlighted, which reads as the page failing to find the row.
+   */
+  it('links a dependency to its Connections row, and only where there is one', () => {
+    const markup = markupOf(<HealthBody block={block(health())} />);
+    expect(markup).toContain('href="/connections?entity=warehouse"');
+    expect(markup).toContain('href="/connections?entity=genie"');
+    // Two rows carry an id; the third carries none and must draw no link.
+    expect([...markup.matchAll(/\/connections\?entity=/g)]).toHaveLength(2);
+  });
+
+  it("quotes the probe's own words rather than blending them into the page", () => {
+    // Quoted so a reader can see where this app stops speaking and the platform
+    // starts. The words themselves are never rewritten.
+    expect(render(<HealthBody block={block(health())} />)).toContain(
+      '\u201cThe space returned 403 for this user.\u201d'
+    );
+  });
+
+  it('says a check that did not run is neither, rather than leaving the cell blank', () => {
+    // A blank beside "Not checked" reads as a result somebody has not written
+    // down yet. It is a third state, and the row says so in words.
+    expect(render(<HealthBody block={block(health())} />)).toContain('Not an error, not a pass.');
+  });
+
+  /**
+   * The platform pills are painted from the platform's own word, never green by
+   * position.
+   *
+   * They are the one pair on this block whose colour could be decided by where
+   * they sit rather than by what they say, and a pill painted green over a word
+   * that is not "Ready" would be the only element on the tab contradicting its
+   * own text.
+   */
+  it('paints a platform reading from its word rather than from its place', () => {
+    const ready = markupOf(<HealthBody block={block(health())} />);
+    expect(ready).toContain('ast-pill--pos ops-pill ops-platform-pill');
+
+    const middling = markupOf(
+      <HealthBody
+        block={block(
+          health({ platform: [{ id: 'endpoint', label: 'Serving endpoint', state: 'Updating', read: true }] })
+        )}
+      />
+    );
+    expect(middling).toContain('ast-pill--warn ops-pill ops-platform-pill');
+    // Scoped to the platform pill: the table below paints an answered dependency
+    // with the same green, and an unscoped assertion would pass on that instead.
+    expect(middling).not.toContain('ast-pill--pos ops-pill ops-platform-pill');
+
+    const unread = markupOf(
+      <HealthBody
+        block={block(health({ platform: [{ id: 'app', label: 'App', state: '', read: false }] }))}
+      />
+    );
+    expect(unread).toContain('ast-pill--neutral-outline ops-pill ops-platform-pill');
+  });
+
+  /**
+   * EVERY ROW CARRIES ITS PRODUCT'S OWN MARK, from the shared module.
+   *
+   * Asserted through the markup the module produces rather than through the map,
+   * because a map that is right and a component that is never called look
+   * identical from `ops-view`'s side. The mark is decorative: the name is right
+   * beside it, and one that announced itself would have a screen reader say the
+   * product twice on every row.
+   */
+  it('carries a product mark on a dependency row, silently', () => {
+    const markup = markupOf(<HealthBody block={block(health())} />);
+    expect(markup).toContain('ops-dependency-mark');
+    expect(markup).toContain('--brand-icon-size:16px');
+    // Three rows, three marks, and none of them speaking.
+    expect([...markup.matchAll(/ops-dependency-mark/g)]).toHaveLength(3);
+    expect(markup).not.toContain('title="Databricks SQL"');
+  });
+
+  /**
+   * A probe nobody has classified draws nothing, rather than a stand-in.
+   *
+   * The wrong mark on a row that is failing sends a reader to the wrong
+   * service's console, which is worse than a row with no mark on it.
+   */
+  it('draws no mark for a probe kind it cannot name', () => {
+    const markup = markupOf(
+      <HealthBody
+        block={block(
+          health({ dependencies: [{ ...health().dependencies[0], kind: 'something-nobody-has-mapped' }] })
+        )}
+      />
+    );
+    expect(markup).toContain('SQL warehouse');
+    expect(markup).not.toContain('ops-dependency-mark');
+  });
+});
+
+/* ── Cost ────────────────────────────────────────────────────────────────── */
+
+describe('the cost block', () => {
+  /**
+   * A BADGE ON THE APPORTIONMENTS, WHERE SIX CAPTIONS USED TO BE.
+   *
+   * Every card carried a line saying how its figure was arrived at, and between
+   * them they were six lines of prose under six numbers that wrapped into the
+   * cards' own borders. The one thing a reader acts on is whether the figure is
+   * an apportionment, and that is one word in the block's own pill.
+   */
+  it('badges an estimated figure and leaves a measured one bare', () => {
+    const payload = cost({
+      tiles: [
+        { ...cost().tiles[0], id: 'sql-warehouse', label: 'SQL warehouse', quality: 'estimate' },
+        { ...cost().tiles[0], id: 'serving-endpoint', label: 'Serving endpoint', quality: 'per-token' },
+      ],
+    });
+    const markup = markupOf(<CostBody block={block(payload)} />);
+    // The badge, in the same pill the block's own "Experimental" uses: one on the
+    // warehouse, and the section badge above. Never a third on the endpoint.
+    expect([...markup.matchAll(/ast-pill ast-pill--warn ops-pill/g)]).toHaveLength(2);
+    expect(markup).toContain('Estimate');
+    expect(markup).not.toContain('Per token');
+  });
+
+  /**
+   * AND THE SCOPE BESIDE IT, ON THE TWO METERS THAT ARE NOT OURS ALONE.
+   *
+   * By class as well as by word. The scope is a fact about what the figure
+   * covers, and in the amber pill beside "Estimate" it would read as a second
+   * warning about a number with one thing wrong with it. Asserted here because
+   * neither the tone nor the absence of the chip on the other four cards is
+   * something a reader would question by looking at the grid.
+   */
+  it('badges the scope of a shared meter, quietly', () => {
+    const payload = cost({
+      tiles: [
+        { ...cost().tiles[0], id: 'genie', label: 'Genie', quality: 'estimate', population: 'Whole workspace' },
+        { ...cost().tiles[0], id: 'app-compute', label: 'App compute', quality: 'rate', population: 'This app' },
+      ],
+    });
+    const markup = markupOf(<CostBody block={block(payload)} />);
+    expect(markup).toContain('ast-pill ast-pill--neutral-outline ops-pill">Whole workspace');
+    // The card whose meter is only ours states nothing about scope at all.
+    expect(markup).not.toContain('This app');
+    // A sentence, in either direction, is what the badge replaced.
+    expect(markup).not.toMatch(/spend shared|not this app|includes other/i);
+  });
+
+  /**
+   * THE FIGURES LINE UP, which they did not.
+   *
+   * Six tiles in a three-column grid is the arrangement where proportional figures
+   * are visible without leaving the page: a reader compares a column of currency
+   * down the grid, and DM Sans digits run from 342 to 656 units wide, so `$1.10`
+   * and `$8.88` do not share an edge. The rule asked for tabular figures with
+   * `font-variant-numeric` and DM Sans has no `tnum` feature to switch on, so it
+   * had never done anything.
+   *
+   * The class goes on the figure ALONE. The basis beside it -- "in range", "per
+   * day" -- is a phrase, and in mono it would read as part of the value.
+   */
+  it('sets the figures in mono and the basis beside them in DM Sans', () => {
+    const markup = markupOf(<CostBody block={block(cost())} />);
+    expect(markup).toMatch(/<span class="ast-num">[^<]*\d/);
+    expect(markup).not.toMatch(/class="ops-tile-basis ast-num"|class="ast-num[^"]*"[^>]*>(in range|per day)/);
+  });
+
+  /** The six lines of prose, gone, and named so they cannot come back quietly. */
+  it('carries no caption under any figure', () => {
+    const payload = cost({
+      tiles: (
+        ['serving-endpoint', 'sql-warehouse', 'genie', 'vector-search', 'app-compute', 'index-rebuild-job'] as const
+      ).map((id) => ({ ...cost().tiles[0], id })),
+    });
+    const markup = render(<CostBody block={block(payload)} />);
+    for (const caption of [
+      'per-token: from recorded tokens',
+      'hourly spend shared across queries by duration',
+      'billed against the warehouse behind it',
+      'whether used or not',
+      'bills while the app exists',
+      'billed per job run',
+    ]) {
+      expect(markup).not.toContain(caption);
+    }
+  });
+
+  it('says whether a tile is a total or a daily rate', () => {
+    const markup = render(<CostBody block={block(cost())} />);
+    expect(markup).toContain('in range');
+    expect(markup).toContain('per day');
+  });
+
+  /**
+   * BADGES OVER THE BLOCK, WHERE THERE WERE THREE QUALIFIERS UNDER IT.
+   *
+   * List prices rather than the bill, complete days only, and read under this
+   * reader's own grants: three lines saying the same thing about how much weight
+   * these figures bear, stacked above a grid of numbers. They have to govern the
+   * block rather than a tile, because they are as true of the cards with no
+   * figure as of the amounts.
+   *
+   * Two words now. "Experimental" is what the figures are worth — it replaced
+   * "Not production", which described the account they came from rather than the
+   * numbers — and "Under development" is the block's own stage.
+   */
+  it('qualifies the whole block with badges rather than a paragraph', () => {
+    const markup = render(<CostBody block={block(cost())} />);
+    expect(markup).toContain('Experimental');
+    expect(markup).toContain('Under development');
+    expect(markup).not.toContain('Not production');
+    expect(markup).not.toMatch(/List prices/);
+    expect(markup).not.toMatch(/Complete through/);
+    expect(markup).not.toMatch(/How to read these figures/);
+  });
+
+  it('draws that badge as the badge the rest of the tab uses', () => {
+    // By class, on the raw markup: the word alone would pass against a bare
+    // span, and a section-level caveat set in body text is the sentence this
+    // replaced.
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <CostBody block={block(cost())} />
+      </MemoryRouter>
+    );
+    expect(markup).toContain('ast-pill ast-pill--warn ops-pill');
+    // The de-emphasis is a class on this section, and the rules that grey the
+    // block are descendants of it. A block showing measured data may never
+    // inherit it, and Traffic below asserts the other half of that.
+    expect(markup).toContain('ops-block ops-block-unfinished');
+  });
+
+  /**
+   * A state and a remedy, where two cards were nothing but a paragraph.
+   *
+   * Vector search and the index rebuild job are unattributable on this
+   * deployment, and both cards were two sentences of explanation with no figure
+   * above them. What a reader needs from them is that there is no figure and, for
+   * the one that has a fix, the variable to set.
+   */
+  it('renders an unattributable component as a state and the fix for it', () => {
+    const payload = cost({
+      tiles: [
+        {
+          ...cost().tiles[0],
+          label: 'Index rebuild job',
+          amount: null,
+          unavailable: 'Not attributable',
+          remedy: 'Set PLAYER_INSIGHTS_INDEX_REBUILD_JOB_ID.',
+        },
+      ],
+    });
+    const markup = render(<CostBody block={block(payload)} />);
+    expect(markup).toContain('Not attributable');
+    expect(markup).toContain('Set PLAYER_INSIGHTS_INDEX_REBUILD_JOB_ID.');
+    expect(markup).not.toMatch(/cannot be told apart/);
+    expect(markup).not.toContain('0.00');
+  });
+
+  /**
+   * NO PER-QUESTION FIGURE, IN ANY WORDING.
+   *
+   * Held against the arithmetic as well as the label, because the row was correct
+   * by its own rules and wrong anyway: what it divided is billed by time, so the
+   * figure fell as the deployment was used more and read as $57.41 a question at
+   * sixteen questions. The payload no longer carries a spend total or a question
+   * count for anything to divide, and the wording is asserted as well, so a
+   * figure recomputed from the tiles could not arrive wearing the old label.
+   */
+  it('puts no per-question average at the foot of the block', () => {
+    const markup = render(<CostBody block={block(cost())} />);
+    expect(markup).not.toMatch(/average/i);
+    expect(markup).not.toMatch(/per question/i);
+    expect(markup).not.toContain('3.00 USD');
+    expect(markup).not.toContain('across 4 questions');
+  });
+
+  it('renders a missing grant with the statement that fixes it', () => {
+    const payload = cost({
+      state: 'no-grant',
+      tiles: [],
+      grant: {
+        object: 'system.billing',
+        privilege: 'SELECT',
+        statement: 'GRANT SELECT ON SCHEMA system.billing TO `someone@example.test`;',
+      },
+    });
+    const markup = render(<CostBody block={block(payload)} />);
+    expect(markup).toContain('You cannot read the billing tables');
+    expect(markup).toContain('GRANT SELECT ON SCHEMA system.billing');
+  });
+
+  it('renders an unfilled range as a different thing from a missing grant', () => {
+    const markup = render(<CostBody block={block(cost({ state: 'no-rows', tiles: [] }))} />);
+    expect(markup).toContain('No billing rows for this range yet');
+    expect(markup).toMatch(/nothing to grant/);
+    expect(markup).not.toContain('GRANT SELECT');
+  });
+
+  /**
+   * THE QUALIFIERS ARE SAID ONCE, IN THE BAND, and the tiles never repeat them.
+   *
+   * The currency, the last complete day and whose grants the figures were read
+   * under are true of every card in the grid. Repeated per card they were the
+   * paragraph this block had removed once already.
+   */
+  it('qualifies the figures once in the band rather than on every card', () => {
+    const markup = render(<CostBody block={block(cost())} />);
+    expect(markup).toContain('read under your own grants');
+    expect(markup).toContain('through 14 Aug, the last complete day');
+    expect([...markup.matchAll(/read under your own grants/g)]).toHaveLength(1);
+  });
+
+  /**
+   * BOTH WAYS OF SAYING THESE ARE NOT THE BILL, because they are two facts.
+   *
+   * The badge says how much weight these figures bear at all. "At list price"
+   * says the rate underneath every figure is the published one, before whatever
+   * discount the account holds, which is the difference between a number that is
+   * roughly the bill and one that is reliably above it. The clause was dropped
+   * when the badge arrived, on the reading that the two were one caveat wearing
+   * two hats. The handoff opens the band's line with it and asks for both.
+   */
+  it('says the figures are not the bill, and says at what price', () => {
+    const markup = render(<CostBody block={block(cost())} />);
+    expect(markup).toContain('Experimental');
+    expect(markup).toContain('At list price');
+    // Once, in the band. Never repeated onto the cards beneath it.
+    expect([...markup.matchAll(/At list price/g)]).toHaveLength(1);
+  });
+
+  /**
+   * The tile mark, at the smaller of the two sizes this page uses.
+   *
+   * The fixture's two tiles are keyed `endpoint` and `index-endpoint`, neither of
+   * which is a cost component the server emits, so this drives the real ids.
+   */
+  it('marks a tile with the product the figure is for', () => {
+    const payload = cost({
+      tiles: [
+        { ...cost().tiles[0], id: 'serving-endpoint' },
+        { ...cost().tiles[1], id: 'app-compute' },
+      ],
+    });
+    const markup = markupOf(<CostBody block={block(payload)} />);
+    expect([...markup.matchAll(/ops-tile-mark/g)]).toHaveLength(2);
+    expect(markup).toContain('--brand-icon-size:14px');
+  });
+
+  /**
+   * AND LEAVES THE ONE THAT IS NOT A PRODUCT'S BARE, which the handoff asks for
+   * outright: the index rebuild is a Lakeflow job and there is no job mark in
+   * the set, so any mark would name a product the figure is not about.
+   */
+  it('leaves a tile unmarked where the spend is not one product’s', () => {
+    const payload = cost({
+      tiles: [{ ...cost().tiles[0], id: 'index-rebuild-job', label: 'Index rebuild job' }],
+    });
+    const markup = markupOf(<CostBody block={block(payload)} />);
+    expect(markup).toContain('Index rebuild job');
+    expect(markup).not.toContain('ops-tile-mark');
+  });
+
+  it('shows a state rather than a zero where a figure could not be sourced', () => {
+    const payload = cost({
+      tiles: [
+        {
+          ...cost().tiles[0],
+          amount: null,
+          unavailable: 'Nothing in billing named this endpoint.',
+        },
+      ],
+    });
+    const markup = render(<CostBody block={block(payload)} />);
+    expect(markup).toContain('Nothing in billing named this endpoint.');
+    expect(markup).not.toContain('0.00');
+  });
+});
+
+/* ── Traffic ─────────────────────────────────────────────────────────────── */
+
+describe('the traffic block', () => {
+  it('draws failures and refusals as two charts', () => {
+    const markup = render(<TrafficBody block={block(traffic())} />);
+    expect(markup).toContain('Failures by cause');
+    expect(markup).toContain('Refusals by cause');
+    // Two headings say this. The title no longer narrates the layout under them.
+    expect(markup).not.toContain('never this one');
+  });
+
+  /**
+   * THE CHART HAS A SCALE NOW, which is the whole of what was wrong with it.
+   *
+   * Four bars between two dates and the counts off screen: a reader could see
+   * which day was busiest and had no way to tell whether the tallest was three
+   * questions or three hundred. A short range labels every column; a long one
+   * marks the peak on the line the tallest column reaches, because thirty
+   * figures across a card collide and one does not.
+   */
+  it('gives the day columns a magnitude at both densities', () => {
+    const day = (n: number) => ({ day: `2026-08-${String(n).padStart(2, '0')}`, count: n });
+    const week = markupOf(<TrafficBody block={block(traffic({ questionsPerDay: [day(3), day(9)] }))} />);
+    expect(week).toContain('ops-daybar-value');
+    expect(week).not.toContain('ops-daybars-peak');
+
+    const month = markupOf(
+      <TrafficBody
+        block={block(traffic({ questionsPerDay: Array.from({ length: 30 }, (_, i) => day(i + 1)) }))}
+      />
+    );
+    expect(month).not.toContain('ops-daybar-value');
+    expect(month).toContain('ops-daybars-peak');
+    // The peak itself, not the first or last day's count.
+    expect(text(month.slice(month.indexOf('ops-daybars-peak')))).toMatch(/^[^0-9]*30/);
+  });
+
+  it('never shows a total of the two', () => {
+    // The freshness line is relative to the real clock, so it can say "Read 42
+    // days ago" on some future afternoon and fail this for a reason that has
+    // nothing to do with the claim. Dropped before the assertion rather than
+    // frozen, because freezing it here would mean threading a clock through the
+    // block head for one test.
+    const markup = render(<TrafficBody block={block(traffic())} />).replace(/Read[^A-Z]*ago/g, '');
+    // 2 failures and 40 refusals. 42 is the number nothing on this page is
+    // allowed to produce: a refusal is the app working correctly, a failure is
+    // the app not working, and the sum is a "problems" figure an operator would
+    // chase into the access controls doing their job.
+    expect(markup).not.toContain('42');
+    expect(markup).toContain('2');
+    expect(markup).toContain('40');
+  });
+
+  it('prints every count as a number rather than only as a bar length', () => {
+    const markup = render(<TrafficBody block={block(traffic())} />);
+    expect(markup).toContain('30');
+    expect(markup).toContain('12');
+  });
+
+  /**
+   * TWO EMPTY CHARTS, AND NOT THE SAME SENTENCE TWICE.
+   *
+   * Failures and refusals are stacked and both are usually empty, and each used
+   * to render "No <plural> in this range, out of 50 runs that ended in it." The
+   * only word that differed was the noun. The run count is in the band above,
+   * once, where it governs all three charts.
+   */
+  it('says an empty chart is empty in as few words as that takes', () => {
+    const markup = render(<TrafficBody block={block(traffic({ failuresByCause: [], refusalsByCause: [] }))} />);
+    expect(markup).toContain('No failures');
+    expect(markup).toContain('No refusals');
+    expect(markup).not.toMatch(/out of 50 runs that ended in it/);
+    expect(markup).not.toMatch(/No failures in this range/);
+  });
+
+  it('replaces itself with a reason when the store could not be read', () => {
+    const markup = render(<TrafficBody block={block(traffic({ reason: 'Lakebase refused the connection.' }))} />);
+    expect(markup).toContain('Traffic could not be read');
+    expect(markup).toContain('Lakebase refused the connection.');
+  });
+
+  /**
+   * ONE READ GONE IS NOT THE BLOCK GONE, AND IT IS NOT A ZERO EITHER.
+   *
+   * The empty chart above is a measurement. This one is not, and the two are
+   * the same picture, so the difference has to be in words on the page. What
+   * must NOT happen is the block substituting itself: the two charts that
+   * answered are the reason the reads are settled separately in the first place.
+   */
+  it('names a chart it could not read without discarding the ones it could', () => {
+    const markup = render(
+      <TrafficBody
+        block={block(
+          traffic({ questionsPerDay: [], unread: 'Questions per day could not be read, so that chart is missing rather than empty: the store did not answer' })
+        )}
+      />
+    );
+    expect(markup).toContain('Part of this could not be read');
+    expect(markup).toContain('Questions per day could not be read');
+    // The block is still standing, with the charts that did answer on it.
+    expect(markup).not.toContain('Traffic could not be read');
+    expect(markup).toContain('Warehouse unavailable');
+  });
+
+  it('says nothing extra when every read answered and the answer was nothing', () => {
+    const markup = render(
+      <TrafficBody block={block(traffic({ questionsPerDay: [], failuresByCause: [], toolCalls: [], runsInRange: 0 }))} />
+    );
+    expect(markup).not.toContain('could not be read');
+  });
+
+  /**
+   * A COUNT LEADS TO THE RUNS IT COUNTED, and to the right ones.
+   *
+   * The two links must differ. Failures and refusals are disjoint by
+   * construction, so a refusal count that landed on the failure filter would
+   * show a reader a list that cannot contain what they clicked, and the page
+   * they came from would look like it had invented the number.
+   */
+  it('sends a cause count to the runs behind it, filtered to that outcome', () => {
+    const markup = markupOf(<TrafficBody block={block(traffic())} />);
+    expect(markup).toContain('href="/monitoring?outcome=failed"');
+    expect(markup).toContain('href="/monitoring?outcome=refused"');
+  });
+
+/**
+   * THE WAY THROUGH TO THE RUNS THEMSELVES, which the handoff's footer asks for
+   * and this block did not have.
+   *
+   * The cause charts land on Monitoring filtered to an outcome. What was missing
+   * was the route to the runs as runs, where an answer time is a fact about one
+   * question rather than a shape on a chart.
+   */
+  it('links answer times through to Run Explorer', () => {
+    const markup = markupOf(<TrafficBody block={block(traffic())} />);
+    expect(markup).toContain('href="/runs"');
+    expect(markup).toContain('Answer times in Run Explorer');
+    // Cost is greyed out as unfinished and Traffic is measured data. The class
+    // that greys Cost is on Cost's own section, and this is the half of that
+    // which a change to a shared wrapper would break.
+    expect(markup).not.toContain('ops-block-unfinished');
+  });
+
+  it('keeps the range on the way to Run Explorer', () => {
+    const markup = markupOf(<TrafficBody block={block(traffic())} runsHref={() => '/runs?range=30d'} />);
+    expect(markup).toContain('href="/runs?range=30d"');
+  });
+
+  /**
+   * A DENOMINATOR OF ZERO IS NOT A DENOMINATOR, and the tab's rule that zero
+   * counts never render is why it is dropped rather than printed. "out of 0
+   * runs" reads as a measurement of a quiet range; what it means is that nothing
+   * ran, so there was nothing to measure and the empty chart above says nothing
+   * about failures at all.
+   */
+  it('drops the run denominator rather than printing a zero', () => {
+    const markup = render(
+      <TrafficBody block={block(traffic({ failuresByCause: [], toolCalls: [], runsInRange: 0 }))} />
+    );
+    expect(markup).not.toContain('out of 0 runs');
+    expect(markup).not.toMatch(/From 0 recorded runs/);
+    // The chart still says it is empty. What it no longer does is divide by it.
+    expect(markup).toContain('No failures');
+    expect(markup).toContain('No tool calls');
+  });
+
+  it('keeps the range on the way to Monitoring', () => {
+    // The count was counted over THIS window. Landing on Monitoring's default
+    // week would show a different number for the same question.
+    const markup = markupOf(
+      <TrafficBody block={block(traffic())} monitoringHref={(outcome) => `/monitoring?range=30d&outcome=${outcome}`} />
+    );
+    expect(markup).toContain('href="/monitoring?range=30d&amp;outcome=failed"');
+  });
+
+  /**
+   * The denominator is in the band, once, rather than under each of three charts.
+   *
+   * It is the same number for all three and it was said three times. What it may
+   * never do is disappear: "No failures" with nothing to divide by is
+   * indistinguishable from "nothing ran", which is why the empty chart above
+   * still carries it.
+   */
+  it('names the run denominator once rather than under every chart', () => {
+    const markup = render(<TrafficBody block={block(traffic())} />);
+    expect(markup).toContain('From 50 recorded runs');
+    expect(markup).not.toMatch(/out of 50 runs/);
+  });
+
+  /**
+   * THE TOOL-CALLS CHART, WHICH IS THE ONE WITH SOMETHING TO SAY ON A HEALTHY
+   * DEPLOYMENT.
+   *
+   * Its labels are prose the store recorded ("Ran a governed read-only query"),
+   * not short identifiers, so what a reader needs is the whole label rather than
+   * a clipped one; the full text is in the markup and the count sits beside it.
+   * Truncation is a CSS concern the file header rules out asserting, so this
+   * holds the content and the empty state instead.
+   */
+  describe('the tool-calls chart', () => {
+    it('names each tool in full and prints its count', () => {
+      const markup = render(
+        <TrafficBody
+          block={block(
+            traffic({
+              toolCalls: [
+                { key: 'read', label: 'Ran a governed read-only query', count: 3 },
+                { key: 'search', label: 'Called search_semantics', count: 15 },
+              ],
+            })
+          )}
+        />
+      );
+      expect(markup).toContain('Tool calls by tool');
+      // The whole phrase, not a clipped one: this is the label that was being cut
+      // to "Ran a governed read-only que…" before it was allowed to wrap.
+      expect(markup).toContain('Ran a governed read-only query');
+      expect(markup).toContain('Called search_semantics');
+      expect(markup).toContain('15');
+    });
+
+    it('reads as a deliberate empty state when nothing called a tool', () => {
+      // The healthy-deployment case. Two words, the same shape as the empty
+      // failures and refusals charts, never a drawn bar of length zero. The
+      // other horizontal charts are emptied too so the absent bar is the tools'.
+      const markup = markupOf(
+        <TrafficBody block={block(traffic({ toolCalls: [], failuresByCause: [], refusalsByCause: [] }))} />
+      );
+      expect(text(markup)).toContain('No tool calls');
+      expect(markup).not.toContain('ops-bar-fill');
+    });
+  });
+});
+
+/**
+ * The window, printed where a reader can check a figure against it.
+ *
+ * THE PAGE PRINTED NO DATES AT ALL, and that is what made a broken range control
+ * survive: 24h and 30 days both returned the last 7 days, the pressed button
+ * highlighted, and every caption on the page read "in this range". A cost total
+ * for the wrong week looked exactly like one for the right week, because the only
+ * evidence on screen for which week it was was the highlight itself.
+ *
+ * Rendered on the server, so the three fetches never start. The dates are drawn
+ * from the URL and the clock alone, which is the whole point: they are what will
+ * be asked for, not a report of what came back.
+ */
+describe('the dates the figures are over', () => {
+  const at = (search: string) =>
+    renderToStaticMarkup(
+      <MemoryRouter initialEntries={[`/ops${search}`]}>
+        <OpsPage />
+      </MemoryRouter>,
+    );
+
+  /** Just the line, so an assertion cannot pass on words from elsewhere on the page. */
+  const shownFor = (search: string) => {
+    const line = at(search).match(/<p class="ops-range-dates"[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
+    expect(line, `a window is printed for "${search || 'the default'}"`).not.toEqual('');
+    return text(line);
+  };
+
+  it('names the days on the page rather than only highlighting a button', () => {
+    // A month name, so this is a date and not a duration restated.
+    // "Showing" was dropped: the dates read as the window without being
+    // introduced, and the line is a chip beside the range control now.
+    expect(shownFor('')).toMatch(/^\d{1,2} \w{3} \d{4} to \d{1,2} \w{3} \d{4}$/);
+  });
+
+  it('says a different window for each option, which is the bug it exists to catch', () => {
+    const windows = ['?range=24h', '', '?range=30d'].map(shownFor);
+    expect(new Set(windows).size).toBe(3);
+  });
+
+  /**
+   * 24 hours is one complete day, so it says one date rather than the same date
+   * twice. Billing rows arrive late, which is why no range ends today.
+   */
+  it('says a single date for a single day', () => {
+    expect(shownFor('?range=24h')).toMatch(/^\d{1,2} \w{3} \d{4}$/);
+  });
+
+  it('admits a custom range it could not read, instead of substituting one quietly', () => {
+    expect(shownFor('?range=custom&from=2026-03-02')).toContain('The custom range was incomplete');
+    // And a complete one says nothing of the sort.
+    expect(shownFor('?range=custom&from=2026-03-02&to=2026-03-06')).not.toContain('was incomplete');
+  });
+
+  /**
+   * That a range change re-reads EVERY block and not only whichever one is on
+   * screen.
+   *
+   * READ FROM THE SOURCE, and that is a weaker test than it looks, so it says so
+   * rather than implying otherwise. The property is a consequence of an effect
+   * firing, and this repository runs vitest under `environment: 'node'` with no
+   * DOM and no testing-library, so no test here can mount the page and count
+   * fetches. What can be checked is the thing that would have to change first:
+   * the reads take ONE window string, so there is no per-block window to get out
+   * of step. Give one of them its own and this fails.
+   *
+   * LATENCY TAKES THE SAME STRING WITHOUT BEING BOUNDED BY IT, which is not a
+   * contradiction and is worth stating because it looks like one. The server
+   * ignores the bounds on that route and reports the window its spans actually
+   * cover; passing `search` anyway is what makes a range change re-read it, so
+   * its read time stays honest beside the other three.
+   */
+  it('reads every block over one window', () => {
+    const source = readFileSync(new URL('./OpsPage.tsx', import.meta.url), 'utf8');
+    const reads = [...source.matchAll(/useBlock<\w+>\('(\/api\/ops\/\w+)',\s*(\w+)\)/g)];
+    expect(reads.map(([, path]) => path)).toEqual([
+      '/api/ops/health',
+      '/api/ops/cost',
+      '/api/ops/traffic',
+      '/api/ops/latency',
+    ]);
+    expect(new Set(reads.map(([, , argument]) => argument))).toEqual(new Set(['search']));
+  });
+
+  /**
+   * And that the window sent is not the browser's own query string, which is the
+   * bug exactly. The control writes `range=30d` and no timestamps; the server
+   * reads `from` and `to` and has never read `range`.
+   */
+  it('sends the resolved window rather than the browser’s search string', () => {
+    const source = readFileSync(new URL('./OpsPage.tsx', import.meta.url), 'utf8');
+    // Resolved through the module Monitoring has always used.
+    expect(source).toMatch(/rangeWindow\(searchParams, now\)/);
+    expect(source).toMatch(/const search = `\?from=\$\{encodeURIComponent\(window_\.from\)\}/);
+    // The old wiring, which must not come back.
+    expect(source).not.toMatch(/const search = location\.search/);
+  });
+});
+
+/* ── Latency ─────────────────────────────────────────────────────────────── */
+
+function latency(overrides: Partial<OpsLatencyPayload> = {}): OpsLatencyPayload {
+  return {
+    readAt: '2026-08-17T16:45:00Z',
+    state: 'ready',
+    reason: '',
+    grant: null,
+    table: 'a_catalog.a_schema.otel_spans',
+    routes: [
+      {
+        route: 'POST /api/insights/ask',
+        spans: 8,
+        p50Ms: 85_500,
+        p95Ms: null,
+        p99Ms: null,
+        slowestMs: 120_000,
+        errorCount: 0,
+        refusalCount: null,
+        lastSpanAt: '2026-08-17 16:40:00',
+        priorSpans: 0,
+        priorP50Ms: null,
+      },
+      {
+        route: 'GET /api/ops/cost',
+        spans: 9,
+        p50Ms: 8_709.2,
+        p95Ms: null,
+        p99Ms: null,
+        slowestMs: 12_000,
+        errorCount: 0,
+        refusalCount: null,
+        lastSpanAt: '2026-08-17 16:41:00',
+        priorSpans: 5,
+        priorP50Ms: 7_000,
+      },
+      {
+        route: 'GET /api/preflight',
+        spans: 26,
+        p50Ms: 169.9,
+        p95Ms: 430.9,
+        p99Ms: 500,
+        slowestMs: 600,
+        errorCount: 2,
+        refusalCount: null,
+        lastSpanAt: '2026-08-17 16:42:00',
+        priorSpans: 22,
+        priorP50Ms: 100,
+      },
+      {
+        route: 'GET /api/storage',
+        spans: 818,
+        p50Ms: 0.7,
+        p95Ms: 1.0,
+        p99Ms: 1.2,
+        slowestMs: 2.0,
+        errorCount: 0,
+        refusalCount: null,
+        lastSpanAt: '2026-08-17 16:43:00',
+        priorSpans: 400,
+        priorP50Ms: 0.6,
+      },
+    ],
+    coveredFrom: '2026-08-16 19:30:59',
+    coveredTo: '2026-08-17 16:43:41',
+    ...overrides,
+  };
+}
+
+describe('the latency block', () => {
+  /** The covered window is named so a reader can see what "prior half" means. */
+  it('names the covered window the baseline is taken from', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    expect(rendered).toContain('prior half');
+    expect(rendered).toContain('2026-08-16 19:30:59');
+  });
+
+  /**
+   * TEN ROUTES A PAGE, WHICH IS WHY THE BLOCK STAYS A BLOCK.
+   *
+   * Every route the deployment serves lands in this table, and on a live
+   * deployment that is dozens: the block grew longer than the three above it put
+   * together and the slow route somebody came here for was thirty rows down.
+   *
+   * The page count is the thing worth holding here rather than the layout. A
+   * reader cannot tell by looking whether a table showing ten rows has ten rows
+   * or has silently dropped the other fourteen, and dropping them is what an
+   * off-by-one in the slice does.
+   */
+  it('shows ten routes and says which ten', () => {
+    const many = Array.from({ length: 24 }, (_, i) => ({
+      route: `GET /api/route-${i}`,
+      spans: 100 + i,
+      p50Ms: 100,
+      p95Ms: 200,
+      p99Ms: 250,
+      slowestMs: 300,
+      errorCount: 0,
+      refusalCount: null,
+      lastSpanAt: '2026-08-17 16:40:00',
+      priorSpans: 100,
+      priorP50Ms: 90,
+    }));
+    const rendered = render(<LatencyBody block={block(latency({ routes: many }))} />);
+
+    expect(rendered).toContain('GET /api/route-0');
+    expect(rendered).toContain('GET /api/route-9');
+    expect(rendered).not.toContain('GET /api/route-10');
+    // The rows on screen, and the total they are ten of.
+    expect(rendered).toContain('1\u201310 of 24');
+  });
+
+  /** Controls over a single page are chrome for a decision nobody has to make. */
+  it('offers no pager where every route already fits', () => {
+    const markup = markupOf(<LatencyBody block={block(latency())} />);
+
+    expect(markup).not.toContain('ops-pager');
+    expect(markup).not.toContain('Next routes');
+  });
+
+  it('prints every figure it was given and invents none', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    expect(rendered).toContain('POST /api/insights/ask');
+    expect(rendered).toContain('85.5s');
+    expect(rendered).toContain('8.7s');
+    expect(rendered).toContain('170ms');
+    // Sub-millisecond keeps its decimal rather than rounding to a bare zero,
+    // which this tab does not print and which reads as nothing measured.
+    expect(rendered).toContain('0.7ms');
+  });
+
+  /**
+   * A 95th over eight spans is the slowest of eight wearing the name of a
+   * percentile. Withheld as a mark; every substitute a reader could compare
+   * against a real percentile is worse than no figure.
+   */
+  it('withholds the 95th below the floor and says why on the cell', () => {
+    const markup = markupOf(<LatencyBody block={block(latency())} />);
+
+    expect(markup).toContain('Withheld: 8 spans is under the 20 needed');
+    expect(markup).toContain('\u2014');
+    // The route that cleared the floor keeps its figure.
+    expect(text(markup)).toContain('431ms');
+  });
+
+  /**
+   * THIN SAMPLES ARE NOT FLAGGED, AND HIGH PERCENTILES ARE NOT FABRICATED.
+   *
+   * Three to eight spans is common on quieter routes. A red mark there trains
+   * people to ignore red marks, and a p95 over eight is the slowest of eight
+   * wearing a percentile's name. The labelled slowest stays; the verdict says
+   * the sample is too thin to judge.
+   */
+  it('does not flag a thin-sample route or print a fabricated percentile', () => {
+    const markup = markupOf(<LatencyBody block={block(latency())} />);
+    const rendered = text(markup);
+
+    expect(rendered).toContain('Too thin to judge');
+    // Ask is thin (8 spans): high percentiles withheld, slowest still labelled.
+    expect(markup).toMatch(/Withheld: 8 spans is under the 20 needed/);
+    expect(rendered).toContain('2m 00s');
+    // The thin ask row is not the one wearing the slower pill; preflight is.
+    expect(rendered).toContain('Slower than baseline');
+  });
+
+  it('keeps errors and refusals as separate columns and never sums them', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    expect(rendered).toContain('Errors');
+    expect(rendered).toContain('Refusals');
+    expect(rendered).toContain('2 of 26 spans');
+    expect(rendered).toContain('Not reported');
+    // The fixture has 2 errors and null refusals; 2 must not appear as a combined total.
+    expect(rendered).not.toMatch(/2 errors? and /i);
+  });
+
+  it('produces no slower verdict when there is no prior period', () => {
+    const alone = latency({
+      routes: [
+        {
+          route: 'POST /api/access-verification',
+          spans: 40,
+          p50Ms: 11_600,
+          p95Ms: 20_000,
+          p99Ms: 25_000,
+          slowestMs: 30_000,
+          errorCount: 0,
+          refusalCount: null,
+          lastSpanAt: '2026-08-17 16:40:00',
+          priorSpans: 0,
+          priorP50Ms: null,
+        },
+      ],
+    });
+    const rendered = render(<LatencyBody block={block(alone)} />);
+
+    expect(rendered).toContain('Too thin to judge');
+    expect(rendered).not.toContain('Slower than baseline');
+    expect(rendered).not.toContain('Within range');
+  });
+
+  it('flags a route that cleared both floors and rose against its own baseline', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    // preflight: 26 vs 22 spans, 169.9 vs 100 ms → slower.
+    expect(rendered).toContain('Slower than baseline');
+    // storage: 0.7 vs 0.6 → within range.
+    expect(rendered).toContain('Within range');
+  });
+
+  it('prints p99 and the slowest alongside p50 and p95', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    expect(rendered).toContain('p99');
+    expect(rendered).toContain('Slowest');
+    expect(rendered).toContain('500ms');
+  });
+
+  it('prints what Databricks said when the read failed, and hardcodes no figures', () => {
+    const rendered = render(
+      <LatencyBody
+        block={block(
+          latency({ state: 'unreadable', routes: [], coveredFrom: '', coveredTo: '', reason: 'a_table could not be read. Databricks said: TABLE_OR_VIEW_NOT_FOUND' })
+        )}
+      />
+    );
+
+    expect(rendered).toContain('Latency could not be read');
+    expect(rendered).toContain('TABLE_OR_VIEW_NOT_FOUND');
+    expect(rendered).not.toContain('p50');
+  });
+
+  it('offers the statement that fixes a missing grant', () => {
+    const rendered = render(
+      <LatencyBody
+        block={block(
+          latency({
+            state: 'no-grant',
+            routes: [],
+            reason: 'you do not have SELECT on a_catalog.a_schema.',
+            grant: {
+              object: 'a_catalog.a_schema',
+              privilege: 'SELECT',
+              statement: 'GRANT SELECT ON SCHEMA a_catalog.a_schema TO `someone@example.com`',
+            },
+          })
+        )}
+      />
+    );
+
+    expect(rendered).toContain('GRANT SELECT ON SCHEMA a_catalog.a_schema');
+  });
+
+  /**
+   * The design's central claim, held for the fourth block as it is for the other
+   * three: a warehouse that will not answer this must leave the rest standing.
+   */
+  it('fails on its own without taking the other blocks with it', () => {
+    const rendered = render(<LatencyBody block={block<OpsLatencyPayload>(null, { failed: 'the read timed out' })} />);
+
+    expect(rendered).toContain('Latency could not be read');
+    expect(rendered).toContain('the read timed out');
+  });
+
+  /** Figures only. The tab's rule, and the reason there is one qualifier. */
+  it('adds no explanatory prose under the heading', () => {
+    const rendered = render(<LatencyBody block={block(latency())} />);
+
+    for (const prose of ['percentile is', 'This block', 'measures the', 'Note that']) {
+      expect(rendered).not.toContain(prose);
+    }
+  });
+});

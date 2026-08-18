@@ -1,0 +1,596 @@
+/*
+ * The Architecture page.
+ *
+ * DuBois, like the rest of the app: white surfaces, the #F7F7F7 wash, 4px on
+ * controls and 8px on cards, no shadow on a static panel, no gradient, no
+ * translucency.
+ *
+ * COLOUR HERE SAYS WHAT A CONNECTION IS, NEVER HOW IT IS. Six accents are spent
+ * on the kinds of thing the drawing joins -- the question's path, the agent, a
+ * Genie space, the semantic index, governed data, storage -- and every one of them
+ * is a FILL: a 3px inset edge on a card, a 1.5px line, a 7px dot. Status is in the
+ * pills and only there. Two colour vocabularies in one drawing is how a healthy
+ * teal node comes to read as a warning.
+ *
+ * That is also why the accents include orange, which appears nowhere else on a
+ * page that is not working: here it is the agent's own identity, as a mass and
+ * never as type, and never on anything a reader presses. Drift keeps amber's WASH
+ * and LINE together with the deep rung carrying the word, because at 1.90:1 a 1px
+ * amber edge is an invisible one. palette.test.ts enforces all of this rather than
+ * trusting this comment.
+ *
+ * THE CANVAS DOES NOT REFLOW. It is one fixed space, stated once in
+ * architecture-layout.ts and never restated here, and a narrow viewport SCROLLS
+ * it. The previous version collapsed into a stacked list below 1024px,
+ * which meant two different diagrams, only one of which anybody had checked. What
+ * does still reshape is the pair of rails under it, and that rule sits with the
+ * app's other breakpoints in responsive.css.
+ */
+
+/* ---------------------------------------------------------------------------
+   The page
+   --------------------------------------------------------------------------- */
+
+.architecture-page {
+  gap: 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   The four tiles
+
+   Four rather than the design's five: LAST CHECK went, because the heading's
+   Refresh control already states freshness. Four divides the row evenly here
+   and into 2x2 at the narrow width, so the strip has no short row at either
+   size -- five left one tile alone on a second row on a phone.
+   --------------------------------------------------------------------------- */
+
+.arch-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arch-tiles li {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.arch-tiles span {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+/* Tabular, because these are recounted on every press: a figure that goes from
+   9 to 10 must not widen its own tile and reflow the row. */
+/* Tabular comes from `.ast-num` in the markup. This rule asked for it with
+   `font-variant-numeric` alone, on DM Sans, whose files declare no `tnum`
+   feature, so four tiles a reader compares across the strip were set in
+   proportional figures and the strip shuffled sideways whenever a count changed. */
+.arch-tiles strong {
+  font-size: var(--text-kpi);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+/* Only a count that something established takes a colour. A green 0 spends the
+   colour on a state it does not describe, and the em-dash the tile shows before
+   anything has been checked is not a measurement at all. */
+.arch-tiles strong[data-tone='reachable'] {
+  color: var(--ast-pos-text);
+}
+.arch-tiles strong[data-tone='drifted'] {
+  color: var(--warning);
+}
+.arch-tiles [data-tile='drift'] span {
+  color: var(--ast-warn-deep);
+}
+/* ---------------------------------------------------------------------------
+   The flow panel
+   --------------------------------------------------------------------------- */
+
+.arch-flow {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 16px;
+  min-width: 0;
+}
+.arch-flow-head {
+  display: grid;
+  gap: 4px;
+}
+/* The one eyebrow on this page that is blue: it heads the live half, and blue is
+   what the app paints anything active. */
+.arch-flow-head .section-label {
+  margin: 0;
+  color: var(--ast-blue);
+}
+.arch-flow-head p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  max-width: 100ch;
+}
+
+/*
+ * The scroller, and the drawing inside it.
+ *
+ * The canvas keeps its stated size at every viewport and the scroller is what
+ * gives. `overflow-x: auto` on a container whose content is wider than it makes
+ * the region keyboard-scrollable in every current engine, and the cards inside
+ * are real links, so tabbing through them scrolls the canvas to each one.
+ *
+ * `auto` AND NOT `scroll`: the canvas is narrower than this panel at the widths
+ * the page is laid out for, so on those there is no bar at all. It used to be
+ * wider than the panel could ever be, which put a bar under the drawing for
+ * everybody; the canvas was tightened to fit and architecture-layout.test.ts now
+ * fails if it outgrows this panel again. NOTHING MAY BE ADDED TO THIS RULE that
+ * takes width -- no padding, no border -- because the arithmetic that check does
+ * goes straight from .arch-flow to the canvas, and the test says so.
+ */
+.arch-canvas-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.arch-canvas {
+  position: relative;
+}
+.arch-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/*
+ * The connectors.
+ *
+ * Neutral, and deliberately so: a line's WEIGHT is topology, which is the one
+ * thing on this page that does not change with the deployment's health. The
+ * colour that says what kind of connection it is rides on the dot travelling
+ * along it, where it cannot be mistaken for a status on the line itself.
+ */
+.arch-edge {
+  fill: none;
+  stroke: var(--ast-border-input);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  animation: arch-dash 1.2s linear infinite;
+}
+@keyframes arch-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+/* The caption names the relationship and never a measurement. Italic mono at
+   10px, which is the smallest thing on the page and is why it is placed in the
+   gaps rather than over a card. */
+.arch-edge-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  fill: var(--ast-text-secondary);
+  /* A halo in the panel's own colour, drawn under the glyphs. The captions are
+     placed in the gaps and the geometry checks keep them there, but the gap for
+     "plan + prose" is 60px of a canvas that now fits itself to the panel, and a
+     caption that grazes a card or crosses its own line has to stay readable
+     rather than depend on the placement being perfect. `paint-order` puts the
+     stroke behind the fill, so this thickens nothing. */
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/*
+ * The travelling dots.
+ *
+ * One per edge, following the same path string its line is drawn from, as a CSS
+ * motion path rather than an SVG `<animateMotion>`: SMIL's clock does not run in
+ * every embedding context and it ignores prefers-reduced-motion, so an
+ * accessibility rule written for it would silently not apply.
+ *
+ * `opacity: 0` is the base state and the keyframes raise it. That is what makes
+ * the frozen frame read as complete for anybody who asked for less motion: with
+ * the animation off, the dots are not eleven markers parked at the start of
+ * eleven lines, they are simply absent, and the lines and captions carry the
+ * drawing on their own.
+ */
+.arch-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 50%;
+  offset-distance: 0%;
+  opacity: 0;
+  z-index: 1;
+  animation-name: arch-travel;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes arch-travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/*
+ * Everything that moves, off, for anybody who asked.
+ *
+ * `!important` is load-bearing rather than lazy: each dot carries its duration
+ * and its delay as an inline style, and an inline `animation-*` outranks any
+ * ordinary rule in this file.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .arch-canvas * {
+    animation: none !important;
+  }
+  .arch-edge {
+    stroke-dasharray: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   A node card
+   --------------------------------------------------------------------------- */
+
+/*
+ * `box-sizing: border-box` is REQUIRED, not tidiness: the widths in
+ * architecture-layout.ts are the widths the paths and the caption positions were
+ * measured against, and a card that grows by its own padding swallows the caption
+ * in the corridor beside it.
+ */
+.arch-node {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 10px 12px 10px 14px;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  z-index: 2;
+}
+/* The accent edge: what kind of thing this is. A 3px mass, which is the one form
+   the working colour is allowed to take. */
+.arch-node[data-accent='question'] {
+  box-shadow: inset 3px 0 0 var(--ast-blue);
+}
+.arch-node[data-accent='agent'] {
+  box-shadow: inset 3px 0 0 var(--ast-navy);
+}
+.arch-node[data-accent='genie'] {
+  box-shadow: inset 3px 0 0 var(--db-teal-600);
+}
+.arch-node[data-accent='search'] {
+  box-shadow: inset 3px 0 0 var(--db-blue-500);
+}
+.arch-node[data-accent='governed'] {
+  box-shadow: inset 3px 0 0 var(--ast-neutral-text);
+}
+.arch-node[data-accent='kept'] {
+  box-shadow: inset 3px 0 0 var(--db-grey-blue-400);
+}
+/* The one warm surface on the page, and only on the orchestrator: it is the
+   thing the whole drawing is about, and the app's warm rung is what it uses to
+   say "this is the agent's own" without spending a hue. */
+.arch-node[data-node='agent-endpoint'] {
+  background: var(--ast-ice);
+}
+.arch-node-main {
+  display: grid;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+/* The product's mark and the node's name on one line, which is the whole reason
+   this wrapper exists: .arch-node-main is a single-column grid, so an icon added
+   as a direct child of it lands on a row of its own ABOVE the title rather than
+   beside it. The handoff's 6-8px gap. */
+.arch-node-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.arch-node-label {
+  font-size: var(--text-base);
+  font-weight: 700;
+  /* A flex child's floor is its content, and these labels are short. Stated
+     anyway, because the mark beside it must not be the thing that shrinks. */
+  min-width: 0;
+}
+a.arch-node-main:hover .arch-node-label {
+  color: var(--ast-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.arch-node-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/*
+ * LAYOUT ONLY, and the layout delta here is one number: a node card is 250px
+ * wide with up to three pills on it, so they take 6px of horizontal padding
+ * against `.ast-pill`'s 8px. Everything else -- the edge, the tint, the radius,
+ * the 11px at 500 -- is the shared recipe, and which family each pill takes is
+ * decided in ArchitecturePage.tsx off the node's own tone.
+ *
+ * The four tone rules that used to be here are gone. Drift and stale content
+ * take the warning family for the reason they always did, now stated once
+ * instead of twice: a connection that answered has not failed, and an index
+ * serving old content passes every check there is. The red on this page is
+ * reserved for a check that ran and failed.
+ */
+.arch-node-status,
+.arch-node-drift,
+.arch-node-age {
+  padding: 1px 6px;
+}
+/* Deliberately no amber edge on the card itself: a 1px warning hairline on a
+   white card is a mark nobody sees. The pill carries the fact. */
+.arch-node[data-tone='blocked'] {
+  border-color: var(--ast-neg-border);
+}
+/* One line, ellipsised. An identifier that wraps to three lines pushes the card
+   past the height the paths were drawn against; the whole value is in the card's
+   accessible name and on the row this card links to. */
+.arch-node-value {
+  font-family: var(--font-mono);
+  color: var(--ast-text-long);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arch-node-role {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+.arch-node-open {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--ast-blue);
+}
+
+/* ---------------------------------------------------------------------------
+   The legend
+   --------------------------------------------------------------------------- */
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  padding: 10px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+.arch-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.arch-legend li > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.arch-legend li[data-accent='question'] > span {
+  background: var(--ast-blue);
+}
+.arch-legend li[data-accent='agent'] > span {
+  background: var(--ast-navy);
+}
+.arch-legend li[data-accent='genie'] > span {
+  background: var(--db-teal-600);
+}
+.arch-legend li[data-accent='search'] > span {
+  background: var(--db-blue-500);
+}
+.arch-legend li[data-accent='governed'] > span {
+  background: var(--ast-neutral-text);
+}
+.arch-legend li[data-accent='kept'] > span {
+  background: var(--db-grey-blue-400);
+}
+
+/* ---------------------------------------------------------------------------
+   The two rails
+   --------------------------------------------------------------------------- */
+
+.arch-rails {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.arch-rail {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 16px;
+  min-width: 0;
+}
+.arch-rail .section-label {
+  margin: 0;
+}
+/* The left rail is the live half and takes the blue eyebrow, matching the
+   drawing's head. The right one stays slate: storage is not a stage of anything
+   the reader is waiting for. */
+.arch-rail:first-child .section-label {
+  color: var(--ast-blue);
+}
+.arch-rail-rows {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arch-rail-row {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.arch-rail-row[data-accent='question'] {
+  box-shadow: inset 3px 0 0 var(--ast-blue);
+}
+.arch-rail-row[data-accent='agent'] {
+  box-shadow: inset 3px 0 0 var(--ast-navy);
+  background: var(--ast-ice);
+}
+.arch-rail-row[data-accent='governed'] {
+  box-shadow: inset 3px 0 0 var(--ast-neutral-text);
+}
+.arch-rail-row[data-accent='kept'] {
+  box-shadow: inset 3px 0 0 var(--db-grey-blue-400);
+}
+.arch-rail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+.arch-rail-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border: 1px solid var(--ast-border-input);
+  border-radius: var(--radius-sm);
+  color: var(--ast-neutral-text);
+}
+.arch-rail-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+/* The connector between two steps, in mono because it names what passes rather
+   than describing it. */
+.arch-rail-step {
+  padding-left: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.arch-rail-note {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--ast-fill-band);
+  padding: 10px 12px;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+/*
+ * "These are the results of the last check, not a new one."
+ *
+ * Given the same neutral note treatment as the rail note above rather than an
+ * alert's, and the choice is the message. Restored results are not a fault --
+ * they are the results, and remembering them is the fix. What the reader is
+ * being told is a fact about provenance, not a problem to act on, and dressing
+ * provenance as a warning is how people learn to read past warnings. The
+ * sentence itself gets firmer when the check is over an hour old; see
+ * restoredNotice in check-session.ts.
+ *
+ * Full width and above the tiles, because it qualifies everything below it.
+ */
+.arch-restored {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--ast-fill-band);
+  padding: 10px 12px;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+/*
+ * ── The drawing, in words ──────────────────────────────────────────────────
+ *
+ * ONE LIST, READ TWO WAYS. It is the screen-reader equivalent of the diagram at
+ * every width, and it is what a panel too narrow to draw in shows instead. Same
+ * sentences, same readings, same clock, built once by `describeArchitecture`.
+ *
+ * It carries the offscreen recipe itself rather than the `.sr-only` utility,
+ * because the state it has to reach is "visible", and un-hiding a utility class
+ * for one element means either fighting a layer's specificity or loosening a rule
+ * every other offscreen string in the app depends on.
+ *
+ * Which state it is in is decided in `canvasFits`, off the measured panel width,
+ * and NOT in a media query. The threshold is a property of the drawing rather
+ * than of the window, breakpoints.test.ts refuses a width invented in this file,
+ * and a viewport query could only estimate the quantity that matters. The
+ * scroller carries `data-fits="false"` when the drawing has stood down, and this
+ * rule is the other half of that switch.
+ */
+.arch-equivalent {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+/* Visible, and an ordinary list: numbered, because the sentences are a path a
+   question travels and the order is the content. */
+.arch-canvas-scroll[data-fits='false'] ~ .arch-equivalent {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0 0 0 20px;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  display: grid;
+  gap: 6px;
+  list-style: decimal;
+  font-size: var(--ast-fs-13);
+  line-height: 1.5;
+  color: var(--ast-text-long);
+}
+.arch-canvas-scroll[data-fits='false'] ~ .arch-equivalent li::marker {
+  color: var(--ast-text-secondary);
+  font-size: var(--ast-fs-11);
+}

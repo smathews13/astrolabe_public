@@ -1,0 +1,423 @@
+/*
+ * The loading suite: the concept flicker, the constellations, and the two navy
+ * panels the working state is drawn on.
+ *
+ * THE KEYFRAMES ARE NOT HERE. They are astrolabe-animation.css, copied verbatim
+ * from the design reference and pinned to it by astrolabe-keyframes.test.ts.
+ * What this file does is SEAT them: a duration is a property of a seating rather
+ * than of a keyframe, which is why every `ast-anim-*` class below names an
+ * animation and leaves its timing to the element that carries it.
+ *
+ * The reduced-motion guard is also not here, and deliberately: it lives with the
+ * keyframes, matches `[class*='ast-anim-']`, and therefore covers every class in
+ * this file the day it is written rather than the day somebody remembers to go
+ * back and extend it.
+ */
+
+/* ---- The animations, as seatable classes ------------------------------- */
+
+/*
+ * Each of these sets the animation and NOT its duration or delay. The splash's
+ * constellation is a 7s loop, the strip's is 5s and the opening sequence's is
+ * 10s; the same keyframes, three rhythms, and the component that knows which
+ * panel it is drawing is the one that says.
+ */
+.ast-anim-draw {
+  animation-name: ast-draw;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.ast-anim-pop {
+  animation-name: ast-pop;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.ast-anim-flick {
+  animation-name: ast-flick;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.ast-anim-concept {
+  animation-name: ast-concept;
+  animation-timing-function: linear;
+}
+
+.ast-anim-hold {
+  animation-name: ast-hold;
+  animation-timing-function: linear;
+}
+
+.ast-anim-gate-in {
+  animation-name: ast-gate-in;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* ---- The concept flicker (#17a) ---------------------------------------- */
+
+/*
+ * One slot, four marks stacked in it, one visible at a time.
+ *
+ * The slot is sized by the component because the size decides the drawing as
+ * well as the box -- below 32px the mark drops its graduation ring -- so what is
+ * left here is the stacking. `position: relative` on the slot and `inset: 0` on
+ * every child is what makes four marks occupy one square instead of four.
+ */
+.ast-flick-slot {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.ast-flick-slot > * {
+  position: absolute;
+  inset: 0;
+  /* Each starts invisible and `ast-flick` brings it in. Without this the four
+     marks are all drawn for the first frame, which is a pile. */
+  opacity: 0;
+}
+
+/*
+ * The inline seating's row (`#17a`): mark, label, right-pinned count.
+ *
+ * A hairline box on the card radius, which is the reference's: it is a status
+ * rather than a control, so it takes the card's border and never the input's.
+ * `justify-content` is not set, because the count is pushed right by its own
+ * `margin-left: auto` -- with the count absent the label must not recentre, and a
+ * `space-between` row does exactly that.
+ */
+.ast-flick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--ast-hairline);
+  border-radius: var(--ast-radius-card);
+  background: var(--ast-white);
+}
+
+.ast-flick-row-say {
+  font-size: var(--ast-fs-13);
+  font-weight: 500;
+  color: var(--ast-text);
+  /* The label is the row's subject and the count is a measurement of it, so the
+     label is what gives when the column is narrow. */
+  min-width: 0;
+}
+
+.ast-flick-row-count {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--ast-fs-12);
+  color: var(--ast-text-secondary);
+}
+
+/*
+ * The flicker's splash seating (`#17a`): 72px, centred, alone.
+ *
+ * THE SPLASH'S ONLY DRAWING, at every width. It was the narrow window's
+ * alternative to `#5ar`'s 520x220 panel and is now the whole of it: the panel
+ * sits in a transcript above the step list, and 220px of night sky between the
+ * question and what the agent is doing put both of them off the fold. The mark
+ * cycling through its four concepts is the same statement in a seventh of the
+ * height, and it is the drawing the reader already met on the way in.
+ */
+.ast-flick-splash {
+  display: grid;
+  place-items: center;
+}
+
+/* ---- The constellations (#5ar, #5br, #19a) ----------------------------- */
+
+.ast-constellation {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/*
+ * The connectors. #6FAEDD at 1px, and the group carries the lit opacity --
+ * `loading-suite.md` gives 0.55 against the static theme's 0.2, "because the
+ * line is the progress signal".
+ */
+.ast-constellation-lines path {
+  stroke: var(--ast-blue-on-dark);
+  stroke-width: 1;
+  fill: none;
+}
+
+/* A star drawn in white: the plain dots and the line glyphs that are not the
+   accent's. White rather than the accent because a sky needs more than one
+   value in it, and the accent is what the products and the game buttons take. */
+.ast-star-ink {
+  fill: var(--ast-white);
+}
+
+.ast-star-ink-stroke {
+  stroke: var(--ast-white);
+}
+
+.ast-star-accent {
+  stroke: var(--ast-blue-on-dark);
+}
+
+.ast-star-accent-fill {
+  fill: var(--ast-blue-on-dark);
+}
+
+/* ---- The opening sequence (#19a) --------------------------------------- */
+
+/*
+ * The full-viewport night sky the app opens on.
+ *
+ * `z-index: 59`, one under `.first-open`'s 60, which is the whole of the layering:
+ * the gate's card rises OVER this and the constellation goes on drawing behind it.
+ * Stated as a literal beside a note rather than as a token because there is
+ * exactly one pair of these and a token named for a single relationship is a
+ * number with a longer name.
+ *
+ * `overflow: hidden` because the sky is a 1180x700 drawing sliced to the viewport:
+ * the stars nearest an edge are outside it on a narrow window, and they should be
+ * cropped rather than scrolled to.
+ */
+.ast-opening {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: var(--ast-navy);
+  overflow: hidden;
+}
+
+/*
+ * The constellation itself, which is `position: absolute; inset: 0` from
+ * `.ast-constellation`. It needs no rule of its own beyond being nameable: this
+ * class exists so a test can find the sky in the markup and so the next person to
+ * read the component knows which of the two children is the drawing.
+ */
+.ast-opening-sky {
+  /* The drawing is decorative and sits under everything else in the layer. */
+  z-index: 0;
+}
+
+/*
+ * The middle of the canvas: the concepts, and the wordmark under them.
+ *
+ * Centred on the viewport rather than placed at the reference's `left:542px;
+ * top:120px`, which are coordinates inside a 1180x700 card. The relationship the
+ * reference is drawing is "the marks are above the middle and the wordmark is
+ * under them", and a viewport of another size keeps that only if it is expressed
+ * as a centre rather than as an offset from a corner.
+ *
+ * Above the sky and below the gate. `pointer-events: none` because the whole
+ * layer is decorative and the gate that arrives over it must be clickable through
+ * whatever is left of this.
+ */
+.ast-opening-centre {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  pointer-events: none;
+}
+
+/*
+ * One slot, four marks stacked in it, exactly as the flicker slot does it.
+ *
+ * The size is the component's, because the size decides the drawing as well as
+ * the box -- 96px keeps the graduation ring that anything under 32px drops -- so
+ * this rule stacks and does not measure. The marks are `position: absolute` inside
+ * it and the slot is sized by its own width and height, which the component sets.
+ */
+.ast-opening-concepts {
+  position: relative;
+  flex: none;
+  width: 96px;
+  height: 96px;
+}
+
+.ast-opening-concepts > * {
+  position: absolute;
+  inset: 0;
+  /* Each starts invisible and `ast-concept` brings it in. Without this all four
+     are drawn on the first frame, which is a pile rather than a cycle. */
+  opacity: 0;
+}
+
+/*
+ * The wordmark, held under the marks.
+ *
+ * 19px is the reference's, and it is not a rung of the type scale: the scale's
+ * neighbours are 18 and 22, and this is the one piece of type in the app that is
+ * the app's name alone on a full-viewport canvas. Written as a literal with this
+ * note rather than rounded to 18, which would make the wordmark read as a heading.
+ *
+ * `opacity: 0` for the same reason the marks have it: `ast-hold` brings it in at
+ * 6% and a wordmark drawn before its animation starts is a flash.
+ */
+.ast-opening-wordmark {
+  flex: none;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ast-white);
+  opacity: 0;
+}
+
+/*
+ * THE GATE'S RISE HAS NO RULE HERE, and that is the convention rather than an
+ * omission. Its duration and its negative delay are a property of the seating, so
+ * `FirstOpenGate` sets them inline the way `ConceptFlicker` and
+ * `ConstellationField` set theirs -- see `gateRiseStyle()`, which derives both
+ * from the sequence's own length so the card and the sky cannot drift apart.
+ *
+ * The class it carries is still `ast-anim-gate-in`, which is what puts it under
+ * the reduced-motion guard at the foot of astrolabe-animation.css.
+ */
+
+/*
+ * The gate on the sky rather than on Ice.
+ *
+ * `.first-open` is an opaque Ice backdrop, which is right when it is the first
+ * thing the reader sees and wrong while the opening sequence is underneath it:
+ * opaque, it would hide the constellation the spec says keeps drawing behind the
+ * gate. Transparent here, and the navy comes from `.ast-opening` below.
+ */
+.first-open.on-sky {
+  background: transparent;
+}
+
+/* ---- The working panels (#5ar, #5br) ----------------------------------- */
+
+/*
+ * A navy field with the constellation drawn across it and the status sitting on
+ * top. `overflow: hidden` is what lets the constellation be a fixed drawing in a
+ * panel that may be narrower than it: the sky is cropped rather than squashed,
+ * which is why the SVG asks for `xMidYMid slice`.
+ */
+.ast-working {
+  position: relative;
+  background: var(--ast-navy);
+  border-radius: var(--ast-radius-card);
+  overflow: hidden;
+}
+
+.ast-working--splash {
+  height: 220px;
+}
+
+.ast-working--card {
+  height: 56px;
+}
+
+/*
+ * The mark and the status line, over the sky.
+ *
+ * Bottom left on the splash, which has room above it for the constellation to be
+ * the panel's subject; vertically centred on the 56px strip, where there is only
+ * one line's worth of room and the constellation is the background.
+ */
+.ast-working-status {
+  position: absolute;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ast-working--splash .ast-working-status {
+  bottom: 12px;
+}
+
+.ast-working--card .ast-working-status {
+  left: 14px;
+  top: 0;
+  bottom: 0;
+}
+
+/*
+ * The one live region for the surface, and the visible label at the same time.
+ *
+ * White on navy at 12px/500, which is the reference's. Not the secondary
+ * on-navy rung: this line is the whole of what a reader is told while they wait,
+ * so it is the panel's foreground rather than a caption on it.
+ */
+.ast-working-say {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ast-white);
+  font-size: var(--ast-fs-12);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The separator between the label and the count, so " · " is generated rather
+   than typed into copy -- which is what makes "no em dashes" checkable. */
+.ast-working-say .ast-sep::before {
+  color: var(--ast-text-on-dark-secondary);
+}
+
+/* The count is mono because it changes in place every second. DM Sans digits are
+   proportional -- a `1` is 342 units against a `0` at 656 -- so a counter set in
+   it jitters by most of a digit width as it ticks. */
+.ast-working-say .ast-num {
+  font-size: var(--ast-fs-12);
+}
+
+/* ---- The splash's own card ---------------------------------------------- */
+
+/*
+ * The mark, the count under it and the indeterminate bar, as the answer card's
+ * whole contents while the first question of a session is in flight.
+ *
+ * Tight, because this block is read in a transcript rather than on a splash
+ * screen: the step list is directly under it and the question directly above,
+ * and the 48/40/40 inset this carried was set around a 220px panel that is no
+ * longer here. The gap is the card rung rather than the panel's 24 for the same
+ * reason -- three short lines with a stanza between each read as three blocks.
+ */
+.ast-splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px 20px;
+}
+
+.ast-splash-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-size: var(--ast-fs-16);
+  color: var(--ast-text);
+}
+
+.ast-splash-copy strong {
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* The bar keeps the app's own indeterminate sweep rather than the design's
+   static segment: a bar frozen at 30% of its track is read as 30% done, which
+   is the one claim this run cannot make. See composer.css. */
+.ast-splash [data-slot='progress'] {
+  width: 220px;
+}
+
+/* The mark beside "Loading conversation", which is NOT a run in flight: nothing
+   is being asked and nothing is being read, so it is the still mark rather than
+   a loader. Miming a run over a database read is the same invention as a
+   progress bar that fills on a timer. */
+.ask-loading-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+}

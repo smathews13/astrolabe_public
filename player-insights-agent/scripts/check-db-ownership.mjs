@@ -1,0 +1,147 @@
+#!/usr/bin/env node
+// Whether the app's Postgres role owns the objects it maintains.
+//
+// Ownership, not privileges, and the two are not interchangeable. The app's DDL
+// runs `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` at every boot, and Postgres
+// checks ownership before it decides the statement is a no-op, so a table
+// created by a developer's role is refused for as long as it exists. Grants do
+// not help, and neither does re-running grant-app-db-access.mjs: the developer
+// role cannot hand ownership over, because `ALTER ... OWNER TO` requires
+// membership in the target role and Lakebase withholds the ADMIN OPTION needed
+// to grant it. The only remedy is to let the app create the objects itself.
+//
+// The condition is reached by pointing local development at the branch the
+// deployed app uses, which is the one thing that makes it likely rather than
+// theoretical.
+//
+// Everything is discovered from the app, so there is nothing to keep in step by
+// hand:
+//   node scripts/check-db-ownership.mjs --app <app-name> --profile <profile>
+//
+// Exits 0 when the app owns its schema, or when the schema does not exist yet,
+// which is the normal state of a deployment whose app has never booted.
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROUTES_FILE = path.join(ROOT, 'server', 'routes', 'insights-routes.ts');
+
+function arg(name) {
+  const at = process.argv.indexOf(`--${name}`);
+  return at === -1 ? '' : (process.argv[at + 1] ?? '');
+}
+
+const APP = arg('app');
+const PROFILE = arg('profile');
+if (!APP || !PROFILE) {
+  console.error('usage: node scripts/check-db-ownership.mjs --app <app-name> --profile <profile>');
+  process.exit(2);
+}
+
+function cli(args) {
+  return JSON.parse(execFileSync('databricks', [...args, '--profile', PROFILE, '-o', 'json'], {
+    encoding: 'utf8',
+  }));
+}
+
+/** The schema the app creates, read from its DDL rather than configured twice. */
+function appSchema() {
+  const source = readFileSync(ROUTES_FILE, 'utf8');
+  const found = [...source.matchAll(/CREATE SCHEMA IF NOT EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
+  const distinct = [...new Set(found)];
+  if (distinct.length !== 1) {
+    console.error(`expected exactly one schema in ${ROUTES_FILE}'s DDL, found ${distinct.length}`);
+    process.exit(2);
+  }
+  return distinct[0];
+}
+
+async function main() {
+  const app = cli(['apps', 'get', APP]);
+  const appRole = app.service_principal_client_id;
+  const postgres = (app.resources ?? []).map((r) => r.postgres).find(Boolean);
+  if (!appRole || !postgres) {
+    // Not a failure of ownership. An app with no postgres resource stores
+    // nothing, and reporting an ownership problem against it would be an
+    // invented finding.
+    console.log(`SKIPPED: ${APP} has no attached postgres resource, so it has no schema to own.`);
+    return;
+  }
+
+  const branch = postgres.branch;
+  const databaseId = String(postgres.database ?? '').split('/').pop();
+  const endpoints = cli(['postgres', 'list-endpoints', branch]);
+  const host = endpoints?.[0]?.status?.hosts?.host;
+  const databases = cli(['postgres', 'list-databases', branch]);
+  const database = (databases ?? []).find((d) => d.database_id === databaseId)?.status?.postgres_database;
+  const me = cli(['current-user', 'me']).userName;
+  if (!host || !database || !me) {
+    console.error(`could not resolve the Lakebase connection for ${APP} (host, database or caller identity missing).`);
+    process.exit(2);
+  }
+
+  const schema = appSchema();
+  const client = new pg.Client({
+    host,
+    port: 5432,
+    database,
+    user: me,
+    password: JSON.parse(execFileSync('databricks', ['auth', 'token', '--profile', PROFILE], { encoding: 'utf8' }))
+      .access_token,
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+
+  const { rows: schemas } = await client.query(
+    `SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace WHERE nspname = $1`, [schema]);
+  if (schemas.length === 0) {
+    console.log(`ok: ${schema} does not exist yet, so the app will create and own it on its first boot.`);
+    await client.end();
+    return;
+  }
+
+  const { rows: tables } = await client.query(
+    `SELECT tablename, tableowner FROM pg_tables WHERE schemaname = $1 ORDER BY tablename`, [schema]);
+  await client.end();
+
+  const owners = [{ tablename: `(schema ${schema})`, tableowner: schemas[0].owner }, ...tables];
+  const foreign = owners.filter((row) => row.tableowner !== appRole);
+
+  console.log(`app role   ${appRole}`);
+  console.log(`database   ${database} on ${host}`);
+  console.log(`schema     ${schema}`);
+  if (foreign.length === 0) {
+    console.log(`ok: the app owns its schema and all ${tables.length} table(s) in it.`);
+    return;
+  }
+
+  console.error(`\nOWNERSHIP: ${foreign.length} object(s) in ${schema} are not owned by the app's Postgres role.`);
+  for (const row of foreign) console.error(`  ${row.tablename} -> ${row.tableowner}`);
+  console.error(`\nThe app's boot DDL will be refused on these for as long as they exist, and grants cannot`);
+  console.error(`fix it: ownership can only be transferred by a role the workspace does not hand out. Let the`);
+  console.error(`app create them instead.`);
+  // This used to say `DROP SCHEMA ... CASCADE`, and somebody nearly ran it. That
+  // is right for a deployment whose app has never booted and catastrophic for one
+  // with history: it takes every conversation, message, rating and run with it,
+  // and the misowned objects are usually a handful of tables a developer's local
+  // server created, sitting in a schema the app itself owns.
+  console.error(`\nDROP THE OBJECTS LISTED ABOVE, ONE AT A TIME. Do NOT drop ${schema} itself: it holds every`);
+  console.error(`conversation, message, rating and run this app has stored, almost certainly owned by the app`);
+  console.error(`already, and none of it is reproducible.`);
+  console.error(`\n  1. check what each one holds:  SELECT count(*) FROM ${schema}.<table>`);
+  console.error(`  2. export anything you need, then DROP TABLE ${schema}.<table>  (no CASCADE: if something`);
+  console.error(`     depends on it, find out what before you take that too)`);
+  console.error(`  3. restart the app, which recreates them as their owner`);
+  console.error(`\nTry ALTER TABLE ${schema}.<table> OWNER TO "${appRole}" first if you like, but expect`);
+  console.error(`"must be able to SET ROLE": Lakebase does not grant a person that over a service principal.`);
+  console.error(`\nThen stop pointing local development at this branch, which is how it happens.`);
+  process.exit(1);
+}
+
+main().catch((error) => {
+  console.error(error.message ?? error);
+  process.exit(2);
+});

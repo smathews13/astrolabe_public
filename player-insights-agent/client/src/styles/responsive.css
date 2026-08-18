@@ -1,0 +1,376 @@
+/*
+ * ── One set of breakpoints: 480, 800, 1180, 1366 ────────────────────────────
+ *
+ * There were two, and they disagreed. Tailwind's `md` (768) and `xl` (1280) were
+ * deciding the identity chip and the primary navigation while these hand-written
+ * queries were deciding the ask layout, so the nav collapsed 100px later than the
+ * column it shares a header with, and the chip left the header 32px before the
+ * rail left the page. Both bands were live and neither was chosen.
+ *
+ * Everything structural is now decided here, in max-width order, largest first, so
+ * a narrower rule always follows the wider one it overrides. The utilities that
+ * used to do half of it are gone from Layout.tsx.
+ *
+ * The two gaps the old set left are also closed here, and they are the reason this
+ * file is worth reading rather than skimming: below 1180px the trace inspector was
+ * simply `display: none` and below 800px so was the conversation rail, with no
+ * other route to either. A phone could not switch, create or delete a conversation
+ * at all except by editing the address bar, and a laptop at 1100px could not reach
+ * the run it had just watched. Each now has somewhere else to be.
+ *
+ * Two more queries have since been folded in: the Connections page's
+ * configured-beside-measured pair, which was its own 640px query, and the
+ * Architecture page's side-by-side rails, which were a 900px query and then a
+ * 1024px one. Neither was measured against anything the other four were.
+ *
+ * THERE IS NO LONGER AN EXCEPTION, and the note that used to be here saying there
+ * was is worth replacing rather than deleting: architecture.css kept a 1024px
+ * rule of its own that collapsed its node graph into a stacked list, which meant
+ * the page had two layouts and only one of them was ever looked at. Its canvas is
+ * a fixed size now and a narrow viewport scrolls it, so the only thing left to
+ * reshape is the pair of rails below it, in the 1180px band with everything else.
+ */
+
+/* Below 1366 the attribution sheds its words and keeps its symbol: an
+   administrator's tab row is six items and seven with the Benchmark Lab
+   experiment on, and "Built on Databricks" is the widest thing in the right-hand
+   cluster that is not identity. The bricks symbol still carries the attribution,
+   which is what the symbol is for. Restored below 1180px by the block after
+   next, where the nav has gone and the room is back.
+   The avatar does not shrink at any width. It is two characters, it is the only
+   thing in the cluster that says WHO, and there is nothing to take off it. */
+@media (max-width: 1365px) {
+  .app-header .built-on-databricks {
+    font-size: 0;
+    gap: 0;
+  }
+  /* The tabs give 4px a side in the same band, because an administrator's row is
+     six tabs rather than four and seven with the Benchmark Lab experiment on.
+     The nav does not shrink -- shell.css pins `flex: none` on it so navigation
+     is not the part that gives -- so a row that outgrows the header pushes the
+     chips to their floor and then the gear towards the edge. This is where the
+     room comes from, and it is the band the chip already declares tight.
+
+     THE FIRST TAB IS NOT SINGLED OUT, HERE OR IN shell.css. It used to keep a
+     `padding-left: 0` that outranked this rule, which left Ask PIA's icon against
+     its own left edge and reading as cut off. Where the row starts is the width of
+     `.brand-lockup`, not the first tab's padding, so every tab tightens together
+     in this band and the row still lands --app-nav-inset clear of the rail. */
+  .app-nav-tab {
+    padding: 0 8px;
+  }
+  /* The harness hands back the 76px it is given on a wide window. The rail is
+     340px there because the column is read rather than glanced at; below this
+     bound the middle column is the one with nothing to spare, and a transcript
+     squeezed to keep a side column roomy is the wrong way round. The band the
+     header already declares tight is the band this is tight in too. */
+  .ask-layout {
+    --trace-width: 264px;
+  }
+}
+@media (max-width: 1180px) {
+  /* The nav moves into the sheet, and the hamburger that opens it appears. One
+     switch, both halves, so the header can never have both or neither. */
+  .app-nav {
+    display: none;
+  }
+  .mobile-nav {
+    display: block;
+  }
+  .app-header .built-on-databricks {
+    font-size: var(--built-on-databricks-fs);
+    gap: 6px;
+  }
+  .ask-layout {
+    --conversation-width: 220px;
+    grid-template-columns: var(--conversation-width) 1fr;
+  }
+  /*
+   * The inspector goes, and its two load-bearing parts move into a strip above the
+   * composer: the run's status and the way into the full run. Hiding the column was
+   * the whole of the old behaviour, which took "Explore full run" off the screen for
+   * every reader between 800px and 1180px — the run they had just watched became
+   * unreachable from the page that ran it.
+   */
+  .trace-inspector {
+    display: none;
+  }
+  .trace-summary {
+    display: flex;
+  }
+  /* Restated off the narrowed rail rather than off a second hardcoded number: the
+     rail is 220px here and this was `left: 250px`, so the two disagreed by 30px and
+     only one of them knew the rail's width. The right-hand inset is the centre
+     column's own padding, which is all there is to clear once the inspector has
+     gone. */
+  .composer {
+    left: calc(var(--conversation-width) + var(--conversation-inset));
+    right: var(--conversation-inset);
+  }
+  /* The architecture page's two rails. Side by side they are around 470px each
+     here, which is where the four-word step titles start wrapping mid-phrase, and
+     the two rails say different kinds of thing so stacking loses nothing but
+     scrolling. The canvas above them does NOT reshape at any width. */
+  .arch-rails {
+    grid-template-columns: 1fr;
+  }
+  /* Monitoring's five-across summary strip. Five tiles here are around 200px each,
+     which is narrower than the longest label ("ANSWERED · REFUSED · FAILED") needs
+     on one line, and a label that wraps mid-phrase above a 22px figure reads as two
+     tiles. Three across keeps the three-part outcome tile whole. */
+  .monitoring-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  /*
+   * The search box gives up the right edge once the row can no longer hold it.
+   *
+   * MOVED UP FROM 800px WHEN THE ALL-TIME SEGMENT WAS ADDED, and the band it used
+   * to cover was the wrong one. `margin-left: auto` is right while the filter row
+   * is one line: it puts the field at the right edge, which is where Sam asked for
+   * it. Once the row wraps, the same margin strands the field at the far end of a
+   * line of its own with a gap where the chips used to be, and a field floating
+   * away from everything reads as belonging to whatever wrapped above it. On its
+   * own line it takes the width instead, which is also the easier target.
+   *
+   * The row wraps well above 800px, and did before the fifth segment existed. Its
+   * items at their preferred widths come to about 1050px: the period group with
+   * five segments is around 390px, the rule 5px, the four chips around 370px, six
+   * 8px gaps, and the search box's 240px basis. `.page-shell` is 1440px wide less
+   * 4vw of padding a side, so the row has about 1085px at a 1180px viewport and
+   * about 940px at 1024px. The search box can shrink 80px to its 160px floor and
+   * no further, so somewhere near a 1090px viewport the row runs out of line and
+   * wraps with the margin still in force. That is the stranding, and between 800px
+   * and 1180px nothing was catching it.
+   *
+   * The 1180px bound is this file's existing breakpoint rather than the arithmetic
+   * rounded, deliberately. The character widths above are estimates read off the
+   * CSS and the labels, without a layout engine, and their error over 800px of
+   * text is larger than the 30px of slack at the crossover, so the bound is set
+   * where it is already structural and the uncertainty falls on the safe side.
+   * `monitoring-layout.test.ts` recomputes the budget from this stylesheet and
+   * fails if a sixth segment, a longer label or wider padding pushes the wrap
+   * point above whatever this bound says.
+   */
+  .monitoring-search {
+    margin-left: 0;
+    flex: 1 1 100%;
+  }
+}
+@media (max-width: 800px) {
+  .ask-layout {
+    display: block;
+  }
+  /* Two across, at the width the architecture tiles also go to two. Below this the
+     tabular figures start colliding with their captions. */
+  .monitoring-strip,
+  .monitoring-panel-grid,
+  .monitoring-refusal-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  /* The search box's own line is settled in the 1180px block above, which covers
+     this band too. It was here, and 800px was too late: the row runs out of line
+     around 1090px. Do not restate it here. */
+  /* The drawer takes the window. A 620px panel with a 60px strip of list showing
+     behind it is neither one thing nor the other, and the list underneath is not
+     what the reader is looking at. Closing it still returns them to their place. */
+  .monitoring-drawer {
+    width: 100vw;
+    border-left: 0;
+  }
+  /*
+   * The rail goes, and the button that opens it as a sheet appears in its place.
+   *
+   * Same pattern as the navigation above it, deliberately: a left-edge sheet, the
+   * same component, the same dismiss-on-choose behaviour. What used to happen here
+   * was that the column was hidden and nothing replaced it, so switching, creating,
+   * filtering and deleting a conversation were all unreachable below 800px.
+   */
+  .conversation-rail {
+    display: none;
+  }
+  .rail-sheet-trigger {
+    display: inline-flex;
+  }
+  /* The chip leaves the header for the sheet at the same width the rail does,
+     rather than 32px earlier at Tailwind's `md`. */
+  .app-header .identity-chips {
+    display: none;
+  }
+  .app-header .header-settings {
+    margin-left: auto;
+  }
+  .mobile-identity {
+    display: flex;
+  }
+  /* With the chips gone the header has nothing left that can give: the lockup alone
+     is around 200px and, with the padding, the gear and the menu button, it
+     over-subscribes the 320px this document declares as its minimum. What went over
+     the edge was the menu button, which at that width is the only way to reach three
+     of the four pages. So the wordmark is what gives instead — it truncates, the
+     mark beside it still identifies the app, and the controls stay on screen. */
+  .app-header > .brand-lockup {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  /* The divider between the lockup and the tabs goes with the tabs: below this
+     width there is no row for it to separate the lockup from. */
+  .brand-lockup .app-chrome-rule {
+    display: none;
+  }
+  .conversation-main {
+    padding: 24px 16px 140px;
+  }
+  .composer {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+  .composer-actions > span {
+    display: none;
+  }
+  .composer-actions {
+    justify-content: space-between;
+  }
+  .prompt-grid,
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+  /* The label and the value stop competing for one line: the value drops under
+     the label rather than truncating to nothing on a phone. */
+  .connection-row-summary {
+    flex-wrap: wrap;
+  }
+  .connection-row-value {
+    flex-basis: 100%;
+    text-align: left;
+  }
+  /* Configured beside measured stops being a comparison and becomes two
+     truncated ids. Moved from a 640px query in connections.css, which was a
+     fifth breakpoint sitting exactly halfway between two declared ones. Snapped
+     up rather than down: the failure it guards against is truncation, so
+     stacking a little early costs a reader some scrolling and stacking a little
+     late costs them the identifiers. */
+  .connection-pair {
+    grid-template-columns: 1fr;
+  }
+  /* A 220px label column, a value and a padlock do not fit beside each other on
+     a phone, and the value is the half that loses. The mark and the label keep
+     the first line, the value takes the second, and the affordance stays pinned
+     to the label's line where a thumb expects it. */
+  .configuration-row {
+    grid-template-columns: 20px 1fr auto;
+  }
+  .configuration-row-value {
+    grid-column: 2 / -1;
+  }
+  /* The Build card's two grids, for the same reason: the left column is a URL
+     and a description, the right is two commit hashes, and neither survives half
+     a phone's width. Stacked, the label column still lines every value up. */
+  .deployment-card-body[data-columns='two'] {
+    grid-template-columns: 1fr;
+  }
+  /* Four tiles across a phone gives each of them about 60px, which truncates
+     both the label and the figure. Two columns keeps the figures readable and
+     the labels unwrapped, and four of them fill 2x2 exactly. */
+  .arch-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .explorer-layout {
+    grid-template-columns: 1fr;
+  }
+  .run-list {
+    position: static;
+    max-height: 300px;
+  }
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  /* Label and value on the first line, track and comparison under them. The row's
+     own padding and the hairline between rows are the wide layout's and are not
+     restated: they used to be a `padding-bottom` and a `border-bottom` declared
+     only here, which now double the ones answer-body.css draws for every width —
+     two hairlines between every pair of rows, and eighteen pixels of padding
+     under each one where the block asks for eight. */
+  .bar-row {
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+  }
+  .bar-row > span {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .bar-row > div {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+  .bar-row em {
+    grid-column: 1 / -1;
+    order: 4;
+  }
+  /*
+   * The login gate's scope rows go back to one column.
+   *
+   * The card is 720px and runs its scopes two across, which is what brings the
+   * nine-scope target inside a laptop viewport instead of opening the app on a
+   * scrolled card. 720px plus the overlay's 24px either side is 768px, so by this
+   * width the card is already at its own width and a second column would be about
+   * 340px holding a 40-character scope name and a status pill.
+   *
+   * The card gets taller here, which is the trade and is why first-open.css keeps
+   * its height cap: a narrow window is often a short one. One tall column is the
+   * arrangement this card shipped with, so this is the old geometry rather than a
+   * new one, and these three rules just undo the two-column grid.
+   */
+  .fo-scope-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Only the true first row has the header band above it now. In two columns the
+     first row is the first two cells, and first-open.css clears both. */
+  .fo-scope-row:nth-child(2) {
+    border-top: 1px solid var(--db-line);
+  }
+  /* There is no right-hand column left to divide. */
+  .fo-scope-row:nth-child(even) {
+    border-left: none;
+  }
+}
+/* On a phone the MARK is what identifies the app and the wordmark is what gives.
+   That is the opposite of what this block used to do, and the reversal is the
+   point of §1: the header used to carry a partner plate beside a two-line
+   wordmark, so the plate was the expendable half. It is the app's own mark now,
+   it reads at 22px, and a lockup that keeps the word and drops the drawing is
+   the one arrangement that says nothing the tab row does not.
+   The inset is restated as the token rather than as a literal so that the brand
+   column, which is the rail's width less this number, is measured from whatever
+   the header is actually padded by. Nothing depends on the alignment at this
+   width -- the nav went at 1180px -- but a rule that only happens to be unread is
+   a rule that is wrong the day something reads it. */
+@media (max-width: 480px) {
+  .app-header {
+    --app-header-pad-x: 12px;
+  }
+  .app-header .ast-wordmark {
+    display: none;
+  }
+  /* The agent map's four columns, from agent-map.md, are four cards of about 70px
+     on a phone, which is narrower than a two-digit step number beside a duration.
+     Two columns is the same grid with fewer tracks, so the alignment the four are
+     there for survives -- every card is still exactly one track wide and the
+     row-end arrow is still the one thing outside the clip. Declared here rather
+     than in trace.css because this document has one set of widths and they all
+     live in this file; see breakpoints.test.ts. */
+  .trace-dag.map {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /*
+   * THE SPLASH PAIR IS NOT HERE ANY MORE, and the deletion is the point rather
+   * than an omission. This block swapped `#5ar`'s 520x220 panel for `#17a`'s
+   * 72px flicker below 480px, where the panel's drawing is cropped by a sixth
+   * and the last stars of the chain pop outside it. The flicker is now the
+   * splash's drawing at every width -- see astrolabe-loaders.css -- so there is
+   * nothing left to swap, and a rule hiding a panel the page no longer seats is
+   * a rule that reads as a second arrangement nobody can find.
+   */
+}
+

@@ -1,0 +1,97 @@
+/*
+ * The 52px top bar's own furniture: the two dividers, the reader's avatar, and
+ * the Databricks attribution.
+ *
+ * The bar's geometry -- its height, its inset, the brand column that aligns the
+ * first tab with the conversation rail -- stays in shell.css, where the rest of
+ * the frame is. What is here is what §1 added: the divider either side of the
+ * navigation, the circle that replaced the "Signed in <name>" chip, and the
+ * attribution that closes the row.
+ */
+
+/*
+ * The 1px rule. There are two, and they do the same job in both places: separate
+ * the app's name from its navigation, and the reader from who built the app.
+ *
+ * 20px rather than the full height, so it reads as a separator between items
+ * rather than as a column edge. Decorative, and marked so in the markup.
+ */
+.app-chrome-rule {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--ast-hairline);
+}
+
+/*
+ * Who is reading, as two characters in a circle.
+ *
+ * §1: 26px, navy, white 11px/500. It is an abbreviation, so the whole address is
+ * on `title` and in the visually hidden label beside it -- a circle saying "SM"
+ * with no way to expand it is a puzzle rather than an identity.
+ *
+ * `flex: none` because a flex child may shrink below its stated width: without
+ * it a tight header ovals the circle rather than letting the tabs be the part
+ * that gives.
+ */
+.identity-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ast-navy);
+  color: var(--ast-white);
+  font-size: var(--ast-fs-11);
+  font-weight: 500;
+  /* The glyphs are their own box, so the flex centring lands on the characters
+     rather than on a line box with leading above and below them. */
+  line-height: 1;
+}
+
+/*
+ * Built on Databricks.
+ *
+ * §1 fixes both sizes: a 13px bricks symbol and an 11.5px label in secondary
+ * text. THE 11.5 IS OFF THE TYPE SCALE and is written as a local property rather
+ * than as a bare length so that the number appears once and so that
+ * responsive.css can put it back after taking it to zero -- below 1366px an
+ * administrator's tab row leaves no room for the words and the symbol carries
+ * the attribution alone.
+ *
+ * The half-pixel is the spec's and is deliberately not rounded to the scale's
+ * 11 or 12. This label sits beside a role chip set at 11 and it is the one piece
+ * of type in the bar that is not the app talking about itself; a rung of
+ * difference is what keeps it from reading as another chip.
+ */
+.built-on-databricks {
+  --built-on-databricks-fs: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  font-size: var(--built-on-databricks-fs);
+  color: var(--ast-text-secondary);
+  white-space: nowrap;
+}
+
+/*
+ * THE ONE FULL-COLOUR DATABRICKS ASSET IN THE PRODUCT (§2), which is why this
+ * rule sets a size and no ink. The symbol arrives with its own colours and must
+ * keep them; a `fill` here would be the app recolouring a corporate trademark on
+ * the one surface that exists to attribute it.
+ */
+.built-on-databricks-symbol {
+  display: inline-flex;
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.built-on-databricks-symbol svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}

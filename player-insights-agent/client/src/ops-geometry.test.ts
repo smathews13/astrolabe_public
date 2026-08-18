@@ -1,0 +1,161 @@
+import { describe, expect, it } from 'vitest';
+
+import { partial } from './styles/stylesheet';
+
+/**
+ * What the Ops tab's stylesheet has to keep saying, in the pattern
+ * connections-geometry.test.ts established.
+ *
+ * This tab is the most numeric surface in the app and the least certain: three of
+ * its six cost figures are apportionments, one is a rate, and the block carrying
+ * them is badged Experimental and Under development. Both facts decide what the
+ * stylesheet is allowed to do. The figures have to line up, because a grid of
+ * currency a reader compares down a column is the one arrangement where
+ * proportional digits are visible on a single screen. And nothing here may be
+ * loud, because a page whose argument is "most of these numbers will not bear
+ * weight" cannot have the brightest colours in the app on it.
+ *
+ * Read against the stylesheet rather than a browser: this repo has no jsdom, and
+ * the claims a browser would have to confirm are named in the handover instead.
+ */
+
+const CSS = partial('ops.css');
+
+/** Comments stripped, so a token discussed in prose is not read as one in use. */
+const RULES = CSS.replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+/**
+ * One rule's body, by exact selector, and a failure rather than an empty string
+ * when the selector is missing. Several assertions below are negative, and a
+ * missing selector would satisfy every one of them while the tab said nothing.
+ */
+function rule(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const body = RULES.match(new RegExp(`(^|[},])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm'))?.[2];
+  expect(body, `ops.css has no rule for ${selector}`).toBeDefined();
+  return body!;
+}
+
+describe('the figures line up', () => {
+  /**
+   * THE DEFECT THIS REPLACED, and it tested green for as long as it existed.
+   *
+   * Both of these asked for tabular figures with `font-variant-numeric` on DM
+   * Sans. DM Sans in this repo declares no `tnum` feature -- its GSUB carries
+   * calt, ccmp, dnom, frac, liga, locl and numr -- so the property had nothing to
+   * switch on and did nothing, silently. Its digits are proportional and not
+   * marginally: at 1000 units per em a `1` is 342 and a `0` is 656, so `$1.10`
+   * and `$8.88` in one column genuinely do not share an edge.
+   *
+   * The latency cells set the family in the rule because every cell in the
+   * selector is a figure. The tile figure carries `.ast-num` in the markup
+   * instead, because the phrase beside it must NOT be mono, and that is asserted
+   * in ops-render.test.tsx where the markup is.
+   */
+  it('sets the latency columns in the one face that can align them', () => {
+    const cells = rule('.ops-latency-table td');
+    expect(cells).toMatch(/font-family:\s*var\(--font-mono\)/);
+    // Right-aligned, which is the reason it matters: right alignment exists to
+    // make a column of figures share an edge.
+    expect(cells).toMatch(/text-align:\s*right/);
+  });
+
+  it('leaves no rule claiming tabular figures it cannot get', () => {
+    // Every surviving `tabular-nums` in this file has to sit beside a mono family,
+    // where it is redundant rather than false and becomes meaningful again if a
+    // tnum-capable DM Sans is ever sourced.
+    const claiming = [...RULES.matchAll(/\{([^}]*font-variant-numeric[^}]*)\}/g)].map((match) => match[1]);
+    expect(claiming.length).toBeGreaterThan(0);
+    for (const body of claiming) {
+      expect(body, `a rule asks for tabular figures without a mono family: ${body.trim()}`).toMatch(
+        /font-family:\s*var\(--font-mono\)/,
+      );
+    }
+  });
+
+  /** The stat value is not one of them any more: the class is in the markup. */
+  it('stops the tile figure asking DM Sans for the feature', () => {
+    expect(rule('.ops-tile-figure')).not.toMatch(/font-variant-numeric/);
+  });
+});
+
+describe('nothing on this tab is louder than what it is reporting', () => {
+  /**
+   * NO ORANGE, which §2 states as a palette rule and this tab was breaking in one
+   * place: the substituted-window note was `--db-warn-600` #BE501E. That is not
+   * amber. It is close enough to `--db-orange` to read as it, on the one line of
+   * the tab that is allowed to be loud, so it was also the most visible pixel
+   * here.
+   *
+   * The replacement is the deep amber rung, which is the palette's text weight for
+   * that family, and it is louder rather than quieter: 5.79:1 on white against
+   * #BE501E's 4.82.
+   */
+  it('paints the substituted-window note in amber rather than in orange', () => {
+    expect(rule('.ops-range-dates-note')).toMatch(/color:\s*var\(--ast-warn-deep\)/);
+    expect(RULES).not.toMatch(/--db-orange|--db-warn-600|#FF3621|#ff3621|#BE501E|#be501e/);
+  });
+
+  /**
+   * Two charts, two colours, and the muting is the point rather than a side
+   * effect. `ops-tab.md` names them: failure bars #A04A62, refusal bars #46596B.
+   * They were DuBois `--db-red-600` #C82D4C and `--db-grey-blue` #445461, one step
+   * brighter and one step darker, and a bar chart of failures in DuBois red is the
+   * loudest thing on a page badged Experimental.
+   */
+  it('draws failures and refusals in the palette’s own two families', () => {
+    expect(rule('.ops-chart-failure .ops-bar-fill')).toMatch(/background:\s*var\(--ast-neg-text\)/);
+    expect(rule('.ops-chart-refusal .ops-bar-fill')).toMatch(/background:\s*var\(--ast-neutral-text\)/);
+    // And never one series. Two selectors, two fills, no shared rule.
+    expect(rule('.ops-chart-failure .ops-bar-fill')).not.toEqual(rule('.ops-chart-refusal .ops-bar-fill'));
+  });
+
+  /**
+   * The cost block is greyed, and by wash rather than by `opacity`. Opacity on the
+   * section would take the border, the band and the two badges down with the
+   * figures, and at the strength that reads as unfinished it puts body text under
+   * the ratio it needs.
+   */
+  it('greys the unfinished block without dimming the words that say so', () => {
+    expect(rule('.ops-block-unfinished .ops-block-body')).toMatch(/background:\s*var\(--ast-fill-band\)/);
+    expect(rule('.ops-block-unfinished .ops-block-body')).not.toMatch(/opacity/);
+    expect(rule('.ops-block-unfinished .ops-tile-figure')).toMatch(/color:\s*var\(--ast-text-secondary\)/);
+  });
+});
+
+describe('the type scale and the two radii', () => {
+  /**
+   * §3 gives eight rungs: 11, 12, 13, 14, 16, 18, 22, 32. This file had five
+   * declarations off it -- 20px, 15px and 10px three times -- which is the largest
+   * concentration in the app after trace.css. A stray size is not a visible bug on
+   * its own; five of them is a surface that does not share a scale with the page
+   * next to it.
+   */
+  it('writes every size as a rung of the scale', () => {
+    const sizes = [...RULES.matchAll(/font-size:\s*([^;]+);/g)].map((match) => match[1].trim());
+    expect(sizes.length).toBeGreaterThan(10);
+    const stray = sizes.filter((value) => !/^var\(--(ast-fs-\d+|text-[\w-]+)\)$/.test(value));
+    expect(stray).toEqual([]);
+  });
+
+  /**
+   * Two corners, and the range chip is one of them now. It was 999px -- one of
+   * eight places in the app reaching for the shape a chip reads as most naturally
+   * -- and §2 settles the astrolabe chip at the same 4px corner as a button.
+   */
+  it('gives the compact date range the chip corner rather than a pill', () => {
+    expect(rule('.ops-range-dates-value')).toMatch(/border-radius:\s*var\(--ast-radius-control\)/);
+  });
+
+  it('writes every corner as a token or a shape', () => {
+    const radii = [...RULES.matchAll(/border-radius:\s*([^;]+);/g)].map((match) => match[1].trim());
+    const stray = radii.filter(
+      (value) =>
+        !/^var\(--(?:radius-(?:sm|md)|ast-radius-(?:control|card))\)$/.test(value)
+        // A 2px bar and a 2px bar top. Both are 8px tall and 4px would round them
+        // into lozenges, which is the same exception timeline.css carries.
+        && !['2px', '2px 2px 0 0', '50%', '999px', '0'].includes(value),
+    );
+    expect(stray).toEqual([]);
+  });
+});

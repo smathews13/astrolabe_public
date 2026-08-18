@@ -1,0 +1,12 @@
+# Empty managed volume for raw snapshots. Bundle deployment does not write to it.
+
+resources:
+  volumes:
+    player_insights_volume:
+      catalog_name: ${var.app_catalog}
+      schema_name: ${var.app_schema}
+      name: ${var.volume}
+      volume_type: MANAGED
+      comment: Raw snapshots.
+      lifecycle:
+        prevent_destroy: true

@@ -1,0 +1,112 @@
+/* --- Destructive alerts, on a page that is otherwise mostly neutral ---------
+ * The `[data-slot='alert']` rule in shell.css pins every alert to the neutral
+ * hairline and the wash surface, and the `[data-slot='alert-description']` rule
+ * paints the sentence in body grey. Between them they outrank AppKit's
+ * destructive variant on everything except the icon, so a failed run, an
+ * unreachable endpoint and a link to a run that is not in the store all arrived
+ * as ordinary cards with one red glyph in the corner.
+ */
+[data-slot='alert'].text-destructive:not(.bg-transparent) {
+  /* Stated as a mix rather than as the red line colour: #FBD0D8 is lighter than
+     the neutral hairline it replaces, so using it would have made this alert's
+     edge fainter than an ordinary one while claiming to be louder. */
+  border-color: color-mix(in oklab, var(--db-red-600) 40%, transparent);
+  background: var(--db-red-wash);
+}
+
+/* --- The unavailable panel, which is a card and not a strip -----------------
+ *
+ * Every other destructive alert in the app interrupts a page that is otherwise
+ * working, and the wash above is right for those. This one stands in the place of
+ * the thing the reader came for -- the runs list, the trace, the scores -- so the
+ * design gives it the geometry of the panel it replaces: the card radius, a white
+ * surface, and the red edge doing the work on its own. A whole empty region on the
+ * wash reads as a stain rather than as a notice.
+ *
+ * Keyed on `.text-destructive` as well as on the class, so that it outranks the rule
+ * above it rather than depending on which order the two are read in, and so that
+ * both rules in this file key on the same thing: if AppKit ever renames that
+ * variant class, they stop applying together instead of one of them going quiet.
+ */
+[data-slot='alert'].text-destructive.unavailable-panel {
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 16px;
+  gap: 8px;
+  font-size: var(--text-base);
+}
+/* Said first and read first, because a heading is as far as most people get. */
+.unavailable-heading {
+  font-size: var(--text-h-sub);
+  font-weight: 700;
+  color: var(--db-ink);
+}
+/*
+ * The provider's own error, verbatim: status, code and sentence.
+ *
+ * A code panel rather than a line of prose, because it is not prose -- it is a
+ * string that gets pasted into a ticket or a search box, and it is the only thing
+ * on this panel that came from outside the app. `--radius-sm` is the declared
+ * radius for a code panel; there is no third radius to invent here. Wrapped on
+ * `anywhere` rather than allowed to scroll, because a Unity Catalog denial names a
+ * three-part table identifier with no spaces in it and a horizontal scrollbar
+ * inside an alert hides the half of the message that names the privilege.
+ */
+.unavailable-error {
+  display: block;
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-sm);
+  background: var(--db-red-wash);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--db-ink);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/*
+ * Which stage it died in and who it ran as. Small print by rank, not by
+ * importance: on a permission failure the identity line is the answer, but it is
+ * only legible as an answer once the error above it has been read.
+ */
+.unavailable-context {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--db-body);
+}
+/* One sentence on what this means for the screen, plus the retry advice when there
+   is any. `unavailable-copy.ts` decides whether the second exists at all. */
+.unavailable-detail {
+  color: var(--db-body);
+}
+/*
+ * When it was last true, and what to quote. One line rather than two stacked ones:
+ * they are both provenance for the failure above them, and separating them gave a
+ * four-line panel two lines of small print.
+ */
+.unavailable-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+.unavailable-meta > * + *::before {
+  content: '· ';
+  color: var(--db-line-strong);
+}
+/* Full ink, because this is the one thing on the panel somebody has to transcribe
+   accurately, and `user-select: all` so one click takes all of it and not the
+   sentence around it. */
+.unavailable-correlation {
+  font-family: var(--font-mono);
+  color: var(--db-ink);
+  user-select: all;
+}
+.unavailable-retry {
+  margin-top: 2px;
+}

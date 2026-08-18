@@ -1,0 +1,1226 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
+import { describe, expect, it } from 'vitest';
+
+import {
+  ConnectionRow,
+  ConnectionsCounts,
+  DeclaredTablesTable,
+  OptionalScopeLine,
+  PreflightRemedyBlock,
+  PreflightRemedyRow,
+} from './ConnectionsPage';
+import { groupByCause, groupByRemedy } from './connection-causes';
+import { splitOptionalScopeFindings } from './optional-scope-findings';
+import {
+  countConnections,
+  readConnection,
+  readConnections,
+  readingsById,
+  type SettingsPayload,
+} from './connection-model';
+import type { StatusTone } from './StatusBadge';
+import { connectionsHeadline, connectionsSettled } from './connection-status';
+import { ENTITY_PARAM, entityHref } from './data-entities';
+import type { PreflightCheck } from './preflight';
+import { connectedResource } from '../../shared/deployment-config';
+
+/**
+ * The Connections tab as it is composed, rather than as its source reads.
+ *
+ * This file exists because of a specific, repeated failure in this repository: a
+ * screen that was wrong while every assertion anybody thought to write about its
+ * source was true. The worst of them was a source row missing its separator, where
+ * "the file imports the linking component", "the file does not build its own
+ * anchor" and "the row names the source and its freshness" all held and the
+ * identifier still ran into the middle of the next sentence on screen. The counts
+ * defect this page just had was the same shape one level up: the old test required
+ * the header to summarise the merged check list rather than the report's own tally,
+ * which it faithfully did -- while printing "24 reachable · 0 blocked · 0 not
+ * checked" above nineteen rows, four of which said "Not checked" and four "Nothing
+ * to reach". Nothing short of composing the markup and reading the text back can
+ * fail on that.
+ *
+ * So the claims here are made against rendered output, and specifically against
+ * the TEXT of it, which is also what a screen reader is handed.
+ *
+ * `renderToStaticMarkup` runs no effects. That is why the page's own blocks are
+ * exported and rendered directly rather than reached through `ConnectionsPage`:
+ * from the page, every one of them is behind a fetch that a static render never
+ * issues, so a page-level render can only ever compose the empty state.
+ */
+
+/** The text a reader sees, tags removed and entities put back. */
+function text(markup: string): string {
+  return markup
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;/g, '\u2019')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&middot;/g, '\u00b7')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#x2F;/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Rendered inside a router, because a row may link a resource out to Databricks. */
+function render(node: React.ReactElement): string {
+  return renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
+}
+
+function check(id: string, status: PreflightCheck['status'], over: Partial<PreflightCheck> = {}): PreflightCheck {
+  return {
+    id,
+    kind: 'dependency',
+    name: '',
+    label: id,
+    status,
+    detail: '',
+    checked_with: '',
+    duration_ms: 0,
+    error: '',
+    remedy: null,
+    ...over,
+  };
+}
+
+function row(id: string, over: Record<string, unknown> = {}) {
+  return {
+    resource: connectedResource(id)!,
+    configured: '',
+    configuredFrom: 'artifact',
+    actual: '',
+    actualObserved: false,
+    intended: null,
+    intendedAt: '',
+    intendedBy: '',
+    editable: false,
+    changedByLabel: '',
+    changedByNote: '',
+    ...over,
+  } as SettingsPayload['resources'][number];
+}
+
+function payload(over: Partial<SettingsPayload> = {}): SettingsPayload {
+  return {
+    resources: [],
+    drift: [],
+    status: 'ok',
+    appBuildSha: '',
+    modelBuildSha: '',
+    orchestratorReported: false,
+    storeAvailable: true,
+    checkedAt: '2026-08-15T18:00:00Z',
+    ...over,
+  };
+}
+
+/**
+ * The counts, as the page derives them: one walk of the readings the rows are
+ * drawn from. Taken through `readConnections` rather than assembled by hand,
+ * because a hand-built `ConnectionCounts` would let this file agree with a page
+ * that had gone back to counting checks.
+ */
+function countsFor(resources: SettingsPayload['resources'], checks: PreflightCheck[]) {
+  return countConnections(readConnections(payload({ resources, checks }), []));
+}
+
+describe('the counts line under the status headline', () => {
+  /**
+   * THE DEFECT, stated as arithmetic a reader can do.
+   *
+   * The parts have to sum to the number of rows drawn, because the line prints the
+   * parts of a whole the reader can see and count. When reachable/blocked/not-checked
+   * came off the check list and drifted/pending off the rows, they summed to
+   * twenty-four over nineteen rows.
+   */
+  it('adds up to the number of connection rows on the page', () => {
+    const resources = [
+      row('sql-warehouse', { configured: 'wh-0001' }),
+      row('catalog', { configured: 'a_catalog' }),
+      row('genie-data', { configured: 'space-data' }),
+      row('llm-gateway'),
+      row('assets-volume'),
+    ];
+    const counts = countsFor(resources, [check('sql-warehouse', 'ok'), check('catalog', 'failed')]);
+    expect(counts.reachable + counts.blocked + counts.notChecked + counts.nothingToReach).toBe(resources.length);
+
+    const rendered = text(render(<ConnectionsCounts counts={counts} />));
+    expect(rendered).toContain('1 reachable');
+    expect(rendered).toContain('1 blocked');
+  });
+
+  /**
+   * "Nobody looked" and "there is nothing to look at" are different claims, and
+   * folding the second into the first would make the line add up while saying
+   * something false about four rows.
+   */
+  it('names rows with nothing to reach separately from rows nobody checked', () => {
+    const counts = countsFor([row('genie-data', { configured: 'space-data' }), row('assets-volume')], []);
+    const rendered = text(render(<ConnectionsCounts counts={counts} />));
+    expect(rendered).toContain('1 not checked');
+    // "Configuration only", which is the name of the section those rows are now
+    // drawn in. The claim is unchanged -- no remote end, so no second reading --
+    // and naming them here differently from the heading they appear under read
+    // as two populations.
+    expect(rendered).toContain('1 configuration only');
+  });
+
+  /**
+   * A phrase that would be a lie by omission on a healthy deployment: printing
+   * "0 nothing to reach" invites a reader to wonder what it means, and there is
+   * nothing for it to mean.
+   */
+  it('says nothing about unreachable-by-design rows when there are none', () => {
+    const counts = countsFor([row('catalog', { configured: 'a_catalog' })], [check('catalog', 'ok')]);
+    expect(text(render(<ConnectionsCounts counts={counts} />))).not.toContain('configuration only');
+  });
+
+  /**
+   * Colour is the second reading of each count, never the only one, and it is spent
+   * only where it describes something. A red "0 blocked" is a page teaching its
+   * reader to stop seeing red.
+   */
+  it('tints only the counts that describe something, and never a count of nothing', () => {
+    const healthy = render(<ConnectionsCounts counts={countsFor([row('catalog', { configured: 'c' })], [check('catalog', 'ok')])} />);
+    expect(healthy).toMatch(/data-tone="reachable"/);
+    expect(healthy).not.toMatch(/data-tone="blocked"/);
+
+    const broken = render(<ConnectionsCounts counts={countsFor([row('catalog', { configured: 'c' })], [check('catalog', 'failed')])} />);
+    expect(broken).toMatch(/data-tone="blocked"/);
+    expect(broken).not.toMatch(/data-tone="reachable"/);
+  });
+
+  /**
+   * A ZERO NEVER RENDERS, WHICHEVER COUNT IT IS. The line printed all six
+   * whatever they were, so a deployment with nothing wrong announced "0 blocked ·
+   * 0 not checked · 0 drifted · 0 pending" under a headline that had just said
+   * every connection answered. Four of the six phrases named states the
+   * deployment was not in, and a reader had to read all four to find that out.
+   */
+  it('stays silent about every state the deployment is not in', () => {
+    const healthy = text(render(<ConnectionsCounts counts={countsFor([row('catalog', { configured: 'c' })], [check('catalog', 'ok')])} />
+      ),
+    );
+    expect(healthy).toBe('1 reachable');
+    expect(healthy).not.toContain('0');
+    expect(healthy).not.toContain('blocked');
+    expect(healthy).not.toContain('not checked');
+    expect(healthy).not.toContain('drifted');
+    expect(healthy).not.toContain('pending');
+  });
+
+  /**
+   * And the separator goes with the count it belonged to. A line assembled by
+   * prefixing " · " to each phrase opens with one the moment the first phrase is
+   * suppressed, which is how a zero leaves a mark after it stops being printed.
+   */
+  it('leaves no separator behind when a count in the middle is suppressed', () => {
+    const line = text(render(<ConnectionsCounts counts={countsFor(
+              [row('catalog', { configured: 'c' }), row('schema', { configured: 's' }), row('assets-volume')],
+              [check('catalog', 'ok'), check('schema', 'failed')],
+            )}
+        />
+      ),
+    );
+    expect(line).toBe('1 reachable · 1 blocked · 1 configuration only');
+    expect(line).not.toMatch(/^ ?\u00b7/);
+    expect(line).not.toMatch(/\u00b7 ?\u00b7/);
+  });
+
+  /**
+   * TWO SENTENCES, AND THE NARROWING IS WHAT EARNS THE TICK.
+   *
+   * The headline used to choose between five readings of these same counts -- "N
+   * of M connections are blocked", "One connection is not using what it was
+   * configured with", "N of M connections answered", "Every connection answered,
+   * and a change is waiting on a release", "Every connection answered" -- so the
+   * first line of the page was a different sentence on nearly every deployment,
+   * and four of the five restated something the count line under it already said
+   * in fewer words.
+   *
+   * It says one thing now: whether anything is blocked. That is a claim these
+   * counts settle outright, which is why the tick may be drawn beside it while
+   * rows are still unverdicted -- where "Every connection answered" could not
+   * honestly be ticked with eight rows carrying no verdict at all. The drifted,
+   * not-checked and pending counts are still facts, they are on the next line,
+   * and each has a section of its own further down.
+   */
+  it('claims only that nothing is blocked, which is what these counts can settle', () => {
+    const partial = countsFor([row('catalog', { configured: 'c' }), row('genie-data', { configured: 'g' })], [check('catalog', 'ok')]);
+    expect(connectionsHeadline(partial)).toBe('Nothing is blocked');
+    expect(connectionsHeadline(partial)).not.toMatch(/every/i);
+    expect(connectionsSettled(partial)).toBe(true);
+
+    const unread = countsFor([], []);
+    expect(connectionsSettled(unread)).toBe(false);
+    expect(connectionsHeadline(unread)).toBe('No connection has been read yet');
+  });
+
+  /**
+   * A blocked row outranks everything else in the headline, because it is the only
+   * state on this page a reader can act on.
+   */
+  it('leads with the blocked count when anything is blocked', () => {
+    const counts = countsFor(
+      [row('catalog', { configured: 'c' }), row('schema', { configured: 's' })],
+      [check('catalog', 'failed'), check('schema', 'ok')],
+    );
+    expect(connectionsHeadline(counts)).toBe('1 blocked');
+    expect(connectionsSettled(counts)).toBe(false);
+  });
+});
+
+describe('the What to fix panel', () => {
+  /**
+   * The panel is the only thing on the page a reader can act on, so the statement
+   * has to survive rendering intact -- as text, in one piece, with its identifiers
+   * unescaped into something that would fail if pasted.
+   */
+  it('carries the exact GRANT statement a reader is meant to paste', () => {
+    const statement =
+      'GRANT SELECT ON TABLE a_catalog.a_schema.gold_player_geo_summary TO `app-svc-principal-7f3a`;';
+    const rendered = render(<PreflightRemedyRow
+        check={check('table-geo', 'failed', {
+          kind: 'table',
+          label: 'SELECT on gold_player_geo_summary',
+          detail: 'The workspace refused this identity: HTTP 403 PERMISSION_DENIED.',
+          remedy: { kind: 'sql', statement, guidance: '' },
+        })}
+      />
+    );
+    expect(text(rendered)).toContain(statement);
+    // In a code block, because a statement set as prose is a statement somebody
+    // retypes rather than copies, and retyping a backtick-quoted principal is
+    // where this goes wrong.
+    expect(rendered).toMatch(/<pre[^>]*class="[^"]*connections-code/);
+  });
+
+  /**
+   * WHO can run it, which was missing from the page entirely once the panel's lead
+   * paragraph turned out to be wrong about it. A reader holding a statement they
+   * lack the authority to execute has been handed a task, not a fix -- and the two
+   * authorities genuinely differ, so one sentence for both would be wrong for one.
+   */
+  it('says who is able to run a Unity Catalog grant, and who a workspace permission', () => {
+    const sql = text(render(<PreflightRemedyRow
+          check={check('t', 'failed', {
+            remedy: { kind: 'sql', statement: 'GRANT SELECT ON TABLE a.b.c TO `p`;', guidance: '' },
+          })}
+        />
+      ),
+    );
+    expect(sql).toMatch(/metastore admin or the object\u2019s owner/);
+
+    const cli = text(render(<PreflightRemedyRow
+          check={check('w', 'failed', {
+            remedy: { kind: 'cli', statement: 'databricks permissions update ...', guidance: '' },
+          })}
+        />
+      ),
+    );
+    expect(cli).toMatch(/workspace admin/);
+    expect(cli).toMatch(/manage this object/);
+  });
+
+  /**
+   * THE PANEL THAT COST AN AFTERNOON, IN THE SHAPE IT IS ALLOWED TO TAKE NOW.
+   *
+   * A blocked Unity Catalog row used to print roughly forty lines of shell at a
+   * reader who owns no workspace authority at all, led by a sentence asserting a
+   * cause nothing had established. What a reader has to do is one line, and that
+   * line plus at most one more is all the panel offers.
+   *
+   * THE SECOND LINE IS BACK, NARROWED, and this test is where the shape of it is
+   * pinned. Cutting the "Why this is the fix" paragraph left the server still
+   * generating it into a field no surface drew, so a blocked row carried an
+   * instruction and no reasoning at all -- including in the cases where following
+   * the instruction alone costs a reader an afternoon. What comes back is one
+   * short line, inline, and the two things it must not become are a heading and a
+   * fold.
+   *
+   * Composed rather than asserted on the source, because "the line is inline",
+   * "the line is folded away" and "the line is gone" are three different screens
+   * and the source reads much the same for all of them.
+   */
+  it('draws the guidance as one inline line, with no fold and no heading', () => {
+    const rendered = render(<PreflightRemedyRow
+        check={check('catalog', 'unverified', {
+          label: 'Unity Catalog catalog',
+          detail: 'HTTP 403. Your sign-in to this app does not carry `catalog.catalogs:read`.',
+          remedy: {
+            kind: 'ui',
+            statement: 'Open this app again in a private browsing window, and sign in there.',
+            guidance: 'Signing out of Databricks does not clear this app\u2019s sign-in.',
+          },
+        })}
+      />
+    );
+
+    // Not code. Nobody pastes a private window into a terminal, and a `<pre>`
+    // is what turned a one-line action into a wall of shell.
+    expect(rendered).not.toMatch(/<pre/);
+    expect(text(rendered)).toMatch(/private browsing window/);
+    // And not addressed to an admin. This is the one remedy on the page that
+    // needs no workspace authority, so the default "run as a workspace admin"
+    // line would send the reader to somebody with nothing to do.
+    expect(text(rendered)).not.toMatch(/workspace admin/);
+    // On the page, where a reader meets it without asking. This is the sentence
+    // whose absence sends somebody to sign out of Databricks first, which cannot
+    // clear a session this app does not hold.
+    expect(text(rendered)).toMatch(/Signing out of Databricks does not clear/);
+    // NOT behind a disclosure, and under no heading of its own. A reader who has
+    // to open something to discover the step they just took was insufficient does
+    // not open it, and one sentence under a heading is two lines carrying one.
+    expect(rendered).not.toMatch(/<details/);
+    expect(rendered).not.toMatch(/<summary/);
+    expect(text(rendered)).not.toMatch(/Why this is the fix/i);
+  });
+
+  /** Almost every remedy has none, and must draw nothing rather than an empty line. */
+  it('draws nothing where the statement stands on its own', () => {
+    const rendered = render(<PreflightRemedyRow
+        check={check('catalog', 'failed', {
+          detail: 'The workspace refused this identity: HTTP 403 PERMISSION_DENIED.',
+          remedy: { kind: 'sql', statement: 'GRANT USE CATALOG ON CATALOG a TO `p`;', guidance: '' },
+        })}
+      />
+    );
+    expect(rendered).not.toMatch(/connections-fix-problem-guidance/);
+  });
+
+  /**
+   * The 404 case, which must NOT offer a grant. A statement that cannot fix the
+   * problem is worse than none: it sends an admin to grant a permission on an
+   * object that does not exist, and when that fails they distrust the page.
+   */
+  it('offers no statement for a dependency that is missing rather than forbidden', () => {
+    const rendered = render(<PreflightRemedyRow
+        check={check('genie-data', 'failed', {
+          detail: 'The workspace has no such object: HTTP 404. This is missing rather than forbidden.',
+          remedy: null,
+        })}
+      />
+    );
+    expect(rendered).not.toMatch(/<pre/);
+    expect(text(rendered)).toMatch(/No statement can fix this one/);
+    expect(text(rendered)).toMatch(/missing rather than forbidden/);
+  });
+
+  /**
+   * The three verdicts have to be distinguishable in the composed text, not merely
+   * in the status enum, because "we asked and were refused", "we asked and it is not
+   * there" and "we never got an answer" imply three different next actions and the
+   * badge alone collapses the first two together.
+   */
+  it('tells a refusal, an absence and an unanswered probe apart in what it says', () => {
+    const refused = text(render(<PreflightRemedyRow
+          check={check('schema', 'failed', {
+            detail: 'The workspace refused this identity as someone@example.com: HTTP 403 PERMISSION_DENIED.',
+            remedy: { kind: 'sql', statement: 'GRANT USE SCHEMA ON SCHEMA a.b TO `p`;', guidance: '' },
+          })}
+        />
+      ),
+    );
+    const missing = text(render(<PreflightRemedyRow
+          check={check('schema', 'failed', {
+            detail: 'The workspace has no such object: HTTP 404. This is missing rather than forbidden.',
+          })}
+        />
+      ),
+    );
+    const silent = text(render(<PreflightRemedyRow
+          check={check('sql-warehouse', 'unverified', {
+            detail: 'The workspace did not answer within 15000 ms, so whether this identity can reach it is unknown.',
+          })}
+        />
+      ),
+    );
+
+    expect(refused).toContain('403');
+    expect(refused).toContain('someone@example.com');
+    expect(missing).toContain('404');
+    expect(missing).not.toContain('403');
+    // The unanswered one is the honesty case: it must read as unknown, and must not
+    // borrow either the language of a refusal or the confidence of a pass.
+    expect(silent).toMatch(/unknown/);
+    expect(silent).not.toContain('403');
+    expect(silent).not.toContain('404');
+    expect(silent).not.toMatch(/refused/);
+  });
+});
+
+/**
+ * THE PANEL THE USER WAS LOOKING AT WHEN HE SAID THE TAB LOOKED BAD.
+ *
+ * One missing OAuth scope stops twelve Unity Catalog table checks at the same
+ * instant, and the panel drew one block per check. So the screen carried, twelve
+ * times over and word for word: a three-sentence diagnosis naming the
+ * permission, a two-line instruction about private browsing windows, and a "Why
+ * this is the fix" fold. Roughly forty lines of identical text, and the one fact
+ * a reader needed from it -- one permission is holding up twelve objects -- was
+ * never stated anywhere on the page.
+ *
+ * Composed rather than asserted on the source, for the reason this whole file
+ * exists: "the page groups the checks" is a claim about a function, and "the
+ * reader is shown the explanation once" is a claim about a screen. Only the
+ * second one is what went wrong.
+ */
+describe('one panel for the failures, not one panel per failure', () => {
+  const FRESH_SIGN_IN = {
+    kind: 'ui' as const,
+    statement: 'Open this app again in a private browsing window, and sign in there.',
+    guidance: 'Signing out of Databricks does not clear this app\u2019s sign-in.',
+  };
+  const DIAGNOSIS =
+    'HTTP 403. Your sign-in to this app does not carry `catalog.tables:read`, which the app asks for.';
+
+  /** The twelve tables of the live deployment, all stopped by one missing scope. */
+  const TABLES = Array.from({ length: 12 }, (_unused, index) =>
+    check(`table:t${index}`, 'unverified', {
+      kind: 'table',
+      name: `a_catalog.a_schema.gold_table_${index}`,
+      label: `a_catalog.a_schema.gold_table_${index}`,
+      detail: DIAGNOSIS,
+      error: 'HTTP 403',
+      remedy: FRESH_SIGN_IN,
+    })
+  );
+
+  /** How many times a phrase appears in what a reader is shown. */
+  function occurrences(markup: string, phrase: string): number {
+    return text(markup).split(phrase).length - 1;
+  }
+
+  function renderGroups(checks: PreflightCheck[]): string {
+    return render(<>
+        {groupByRemedy(groupByCause(checks)).map((block) => (<PreflightRemedyBlock key={block.key} block={block} />
+        ))}
+      </>
+    );
+  }
+
+  /**
+   * THE DEFECT, counted. Twelve checks, one explanation, one instruction. The
+   * numbers are asserted as exactly one rather than "fewer than twelve": a panel
+   * that printed it twice would be the same fault, smaller.
+   */
+  it('explains twelve checks stopped by one permission exactly once', () => {
+    const rendered = renderGroups(TABLES);
+    expect(occurrences(rendered, 'does not carry')).toBe(1);
+    expect(occurrences(rendered, 'private browsing window')).toBe(1);
+    // And the guidance line ONCE, on the group, for the same reason as the other
+    // two. It is one line rather than the paragraph that used to be here, but
+    // twelve copies of one line is the same defect at a twelfth of the size.
+    expect(occurrences(rendered, 'Signing out of Databricks does not clear')).toBe(1);
+    // The paragraph itself is on no copy of it, folded or otherwise.
+    expect(occurrences(rendered, 'keeps its own sign-in')).toBe(0);
+  });
+
+  /**
+   * And the fact the old panel never stated at all. A reader has to be able to
+   * see "one permission, twelve objects" without scrolling and without counting
+   * blocks, so the count is in the group's own heading.
+   */
+  it('says how many objects the one cause is holding up', () => {
+    expect(text(renderGroups(TABLES))).toMatch(/12 checks, stopped for the same reason/);
+  });
+
+  /**
+   * The affected objects, all of them, listed compactly beneath the one
+   * explanation. Grouping must not cost a reader the ability to see WHICH tables
+   * are affected: that would trade one unreadable screen for a vaguer one.
+   */
+  it('lists every affected object, with the catalog and schema said once', () => {
+    const rendered = renderGroups(TABLES);
+    const readable = text(rendered);
+    for (let index = 0; index < 12; index += 1) {
+      expect(readable).toContain(`gold_table_${index}`);
+    }
+    // The prefix twelve tables share is stated once, above the list, instead of
+    // being repeated down it. `title` keeps the whole name on every entry.
+    expect(occurrences(rendered, 'a_catalog.a_schema')).toBe(1);
+    expect(rendered).toMatch(/title="a_catalog\.a_schema\.gold_table_0"/);
+  });
+
+  /**
+   * A group of one is drawn exactly as a single blocked check always was, and it
+   * gains no affected list: a list of one is a heading repeated.
+   */
+  it('draws a lone blocked check as itself, with no list and no count', () => {
+    const rendered = renderGroups([
+      check('sql-warehouse', 'failed', { label: 'SQL warehouse', detail: 'The workspace refused this identity.' }),
+    ]);
+    expect(text(rendered)).toContain('SQL warehouse');
+    expect(text(rendered)).not.toMatch(/for the same reason/);
+    expect(rendered).not.toMatch(/connections-fix-affected/);
+  });
+
+  /**
+   * THE ELEVEN-LINE SHELL SNIPPET, ONCE. A scope the app never declared is fixed
+   * by a bundle edit and a restart, and that block was printed per affected row
+   * as well. A code panel is the most expensive thing on the page to scroll past
+   * and it says the same thing however many rows share it.
+   */
+  it('prints a shell remedy once for the group that shares it', () => {
+    const declaresNothing = {
+      kind: 'cli' as const,
+      statement: 'databricks apps stop <app-name>\ndatabricks apps start <app-name>',
+      guidance: 'Anyone already signed in needs a new sign-in afterwards.',
+      run_by: 'Run by whoever deploys this app',
+    };
+    const rendered = renderGroups([
+      check('semantic-index', 'unverified', {
+        label: 'Vector Search index',
+        detail: 'HTTP 403. This app does not ask for `vectorsearch.vector-search-indexes:read`.',
+        remedy: declaresNothing,
+      }),
+      check('semantic-endpoint', 'unverified', {
+        label: 'Vector Search endpoint',
+        detail: 'HTTP 403. This app does not ask for `vectorsearch.vector-search-indexes:read`.',
+        remedy: declaresNothing,
+      }),
+    ]);
+    expect([...rendered.matchAll(/<pre/g)]).toHaveLength(1);
+    expect(occurrences(rendered, 'databricks apps stop')).toBe(1);
+    expect(occurrences(rendered, 'whoever deploys this app')).toBe(1);
+    expect(occurrences(rendered, 'needs a new sign-in afterwards')).toBe(1);
+  });
+
+  /**
+   * D6 AND D8, ON THE COMPOSED SCREEN. A check the workspace refused and a check
+   * that never reached the object are different claims with different next
+   * actions, and a group states one status for all of its members. So these two
+   * must be two blocks even when every word of their prose agrees, and the
+   * unchecked one must not end up under the word "Blocked".
+   */
+  it('never puts a refused check and an unreached one under one verdict', () => {
+    const rendered = renderGroups([
+      check('a', 'failed', { label: 'A', detail: 'The same words.' }),
+      check('b', 'unverified', { label: 'B', detail: 'The same words.' }),
+    ]);
+    const readable = text(rendered);
+    expect(readable).toContain('Blocked');
+    expect(readable).toContain('Not checked');
+    expect([...rendered.matchAll(/connections-fix-problem-head/g)]).toHaveLength(2);
+  });
+
+  /**
+   * D10, AND THE PANEL SAM WAS LOOKING AT SECOND TIME ROUND. Two checks refused
+   * over different permissions must each keep their own sentence: a surviving
+   * single sentence would name a permission one of them was never refused over,
+   * which is a diagnosis asserting a cause its own evidence does not support.
+   *
+   * But one restart clears both, and the panel printed the instruction for it
+   * once per permission -- four times on the live deployment. So the two causes
+   * stay two rows, and the remedy they share is stated ONCE. Both halves are
+   * asserted here because either alone is a way of getting this wrong.
+   */
+  it('keeps two permissions as two rows under one shared instruction', () => {
+    const rendered = renderGroups([
+      check('catalog', 'unverified', {
+        label: 'Unity Catalog catalog',
+        detail: 'Your sign-in does not carry `catalog.catalogs:read`.',
+        remedy: FRESH_SIGN_IN,
+      }),
+      ...TABLES,
+    ]);
+    const readable = text(rendered);
+    expect(readable).toContain('catalog.catalogs:read');
+    expect(readable).toContain('catalog.tables:read');
+    // Two causes, so two rows with two chips and two sentences.
+    expect([...rendered.matchAll(/connections-fix-problem-head/g)]).toHaveLength(2);
+    // One remedy, so ONE instruction and one guidance line. Exactly one rather
+    // than "fewer than two": twice is the defect at half the size.
+    expect(occurrences(rendered, 'private browsing window')).toBe(1);
+    expect(occurrences(rendered, 'Signing out of Databricks does not clear')).toBe(1);
+    // And one block, not two. The border between blocks is what read as two
+    // separate faults when there is one thing to do about them.
+    expect([...rendered.matchAll(/connections-fix-problem"/g)]).toHaveLength(1);
+  });
+
+  /**
+   * THE OTHER HALF OF ONE PANEL: two causes with genuinely different reasons and
+   * no remedy at all. They share a block, because the sentence about redeploying
+   * is the same for both and printing it twice is the fault this rebuild is
+   * about; they keep their own sentences, because "the manifest is unconfirmed"
+   * and "the index did not answer" are different facts.
+   */
+  it('states the no-statement remedy once over the causes that share it', () => {
+    const rendered = renderGroups([
+      check('manifest', 'unverified', {
+        label: 'Declared tables',
+        detail: '0 of 12 declared tables answered.',
+        remedy: null,
+      }),
+      check('vs-endpoint', 'unverified', {
+        label: 'Vector Search endpoint',
+        detail: 'Only the index names the endpoint serving it.',
+        remedy: null,
+      }),
+    ]);
+    const readable = text(rendered);
+    expect(readable).toContain('declared tables answered');
+    expect(readable).toContain('names the endpoint serving it');
+    expect(occurrences(rendered, 'No statement can fix')).toBe(1);
+    expect(occurrences(rendered, 'redeployed with it declared')).toBe(1);
+  });
+});
+
+/**
+ * THE PANEL SAM WAS LOOKING AT WHEN HE SAID THE UC ERRORS WERE STILL STACKED.
+ *
+ * Four blocks under a red heading reading "What to fix": the catalog, the schema,
+ * twelve tables collected into one with their twelve names listed under it, and
+ * the Vector Search index. Each carried the same paragraph again with a different
+ * permission in it. Three of the four were the catalog reads
+ * `shared/optional-user-api-scopes.ts` had already recorded as OPTIONAL, so the
+ * section was asking a reader to repair three permissions no ask needs, and the
+ * one finding on the screen that somebody did have to act on was the fourth
+ * thing down.
+ *
+ * Composed rather than asserted on the source, for the reason this whole file
+ * exists: "the page filters the optional shortfalls" is a claim about a function,
+ * and "the reader is not being told to fix them" is a claim about a screen.
+ */
+describe('optional permissions are not a thing to fix', () => {
+  const FRESH_SIGN_IN = {
+    kind: 'ui' as const,
+    statement: 'Open this app again in a private browsing window, and sign in there.',
+    guidance: 'Chrome and Edge call it Incognito or InPrivate.',
+  };
+
+  /** The sentence the server writes for a refusal over a declared permission. */
+  function diagnosis(scope: string): string {
+    return `HTTP 403. Your sign-in to this app does not carry \`${scope}\`, which the app asks for. ` +
+      'The call stopped there, so nothing was established about whether you can reach the object. ' +
+      'This is not a grant you are missing.';
+  }
+
+  function refused(id: string, label: string, scope: string, over: Partial<PreflightCheck> = {}) {
+    return check(id, 'unverified', {
+      label,
+      stopped: 'refused',
+      scope,
+      detail: diagnosis(scope),
+      error: 'HTTP 403',
+      remedy: FRESH_SIGN_IN,
+      ...over,
+    });
+  }
+
+  /** The live screen: two catalog scopes, twelve tables, and one required index. */
+  const LIVE = [
+    refused('catalog', 'Catalog \u00b7 a_catalog', 'catalog.catalogs:read'),
+    refused('schema', 'Schema \u00b7 a_catalog.a_schema', 'catalog.schemas:read'),
+    ...Array.from({ length: 12 }, (_unused, index) =>
+      refused(`table:t${index}`, `a_catalog.a_schema.gold_table_${index}`, 'catalog.tables:read', {
+        kind: 'table',
+      })
+    ),
+    refused('semantic-index', 'Vector Search index \u00b7 a_catalog.a_schema.semantic_layer_index',
+      'vectorsearch.vector-search-indexes:read'),
+  ];
+
+  function occurrences(markup: string, phrase: string): number {
+    return text(markup).split(phrase).length - 1;
+  }
+
+  /**
+   * The whole region, composed the way the page composes it: the split decides
+   * what the panel holds, the panel draws the findings, and the neutral line
+   * draws the rest. Anything the page does differently is a defect this cannot
+   * see, which is why the split is imported rather than reimplemented here.
+   */
+  function renderRegion(checks: PreflightCheck[]): string {
+    const findings = splitOptionalScopeFindings(checks);
+    return render(<>
+        {findings.required.length > 0 ? (<section>
+            <h3>What to fix</h3>
+            {groupByRemedy(groupByCause(findings.required)).map((block) => (<PreflightRemedyBlock key={block.key} block={block} />
+            ))}
+          </section>
+        ) : null}
+        <OptionalScopeLine shortfall={findings.optional} />
+      </>
+    );
+  }
+
+  /**
+   * (a) THE FIRST THING THAT WILL REGRESS. An optional shortfall must not appear
+   * as an error under "What to fix", and the assertion is on the panel's own
+   * markup rather than on the count of blocks: a version that kept the block and
+   * merely restyled it would still be asking a reader to fix a permission no ask
+   * needs.
+   */
+  it('draws no fix block for a shortfall in an optional permission', () => {
+    const rendered = renderRegion(LIVE);
+    // One cause in the panel, and it is the required one.
+    expect([...rendered.matchAll(/connections-fix-problem-head/g)]).toHaveLength(1);
+    expect(text(rendered)).toContain('Vector Search index');
+    // The optional names are on the screen, and not inside the panel.
+    const panel = rendered.slice(0, rendered.indexOf('connections-optional-scopes'));
+    for (const scope of ['catalog.catalogs:read', 'catalog.schemas:read', 'catalog.tables:read']) {
+      expect(text(rendered)).toContain(scope);
+      expect(panel).not.toContain(scope);
+    }
+    // And the twelve table names are not dumped under the heading any more. Each
+    // has a row of its own in the Unity Catalog tables section below.
+    expect(rendered).not.toMatch(/connections-fix-affected/);
+    expect(text(rendered)).not.toContain('gold_table_0');
+  });
+
+  /**
+   * A deployment where the ONLY shortfall is optional gets no red section at all.
+   * This is the customer default, and it is the case the old page was worst on:
+   * three red blocks and nothing wrong.
+   */
+  it('draws no What to fix section when every shortfall is optional', () => {
+    const rendered = renderRegion(LIVE.filter((entry) => entry.id !== 'semantic-index'));
+    expect(text(rendered)).not.toContain('What to fix');
+    expect(rendered).not.toMatch(/connections-fix-problem/);
+    expect(rendered).toMatch(/connections-optional-scopes/);
+    // Never the red pill the required rows use, on the surface or in the class.
+    expect(rendered).not.toMatch(/ast-pill--neg/);
+    expect(text(rendered)).not.toContain('Missing');
+  });
+
+  /**
+   * (b) THE SECOND THING THAT WILL REGRESS. The private-window instruction is one
+   * move that clears every one of these, and the panel printed it once per
+   * affected object and then once per permission. Exactly one rather than "fewer
+   * than four": twice is the same defect at half the size.
+   */
+  it('states the remedy once for the section, not once per finding', () => {
+    const shared = renderRegion([
+      ...LIVE,
+      refused('semantic-endpoint', 'Vector Search endpoint', 'vectorsearch.vector-search-endpoints:read'),
+    ]);
+    // Two required findings now, refused over two different permissions, so two
+    // rows: neither may be given the other's permission (D10).
+    expect([...shared.matchAll(/connections-fix-problem-head/g)]).toHaveLength(2);
+    expect(text(shared)).toContain('vectorsearch.vector-search-indexes:read');
+    expect(text(shared)).toContain('vectorsearch.vector-search-endpoints:read');
+    // One instruction, one browser note, one shared explanation.
+    expect(occurrences(shared, 'private browsing window')).toBe(1);
+    expect(occurrences(shared, 'Chrome and Edge call it Incognito')).toBe(1);
+    expect(occurrences(shared, 'This is not a grant you are missing')).toBe(1);
+    expect(occurrences(shared, 'The call stopped there')).toBe(1);
+  });
+
+  /**
+   * The finding as a reader meets it: one line carrying the object, the verdict
+   * and the permission. It was the object and the verdict on one line and the
+   * permission in a paragraph under it, which is how four findings became eight
+   * lines before the panel said anything anybody could act on.
+   */
+  it('puts the object, the verdict and the permission on one line', () => {
+    const rendered = renderRegion(LIVE);
+    const head = /<div class="connections-fix-problem-head">(.*?)<\/div>/s.exec(rendered)?.[1] ?? '';
+    expect(head).not.toBe('');
+    expect(text(head)).toContain('Vector Search index');
+    expect(text(head)).toContain('Refused');
+    expect(text(head)).toContain('vectorsearch.vector-search-indexes:read');
+  });
+
+  /**
+   * The neutral line says what is unavailable without them and asserts nothing
+   * about why. A reader must not read it as "you cannot see those tables": the
+   * calls stopped before they reached one.
+   */
+  it('reports the optional shortfall neutrally, with no cause and no fix', () => {
+    const readable = text(renderRegion(LIVE));
+    expect(readable).toContain('Optional permissions');
+    expect(readable).toContain('14 checks on this page');
+    expect(readable).toContain('before reaching the object');
+    expect(readable).toContain('Questions do not need them');
+    expect(readable).not.toMatch(/you have not|because/i);
+  });
+
+  /**
+   * THE ROW THAT WOULD HAVE BEEN LEFT POINTING AT NOTHING. The catalog and the
+   * schema have connection rows of their own, and an opened row says the
+   * statement that fixes it is under "What to fix" above. That sentence was true
+   * while every refusal was drawn there. Now that an optional shortfall is not,
+   * the row must stop sending a reader up the page to look for it, while still
+   * reporting what the workspace said about the object.
+   */
+  it('does not send an optional shortfall’s row to a section that no longer holds it', () => {
+    const optional = check('catalog', 'unverified', {
+      stopped: 'refused',
+      scope: 'catalog.catalogs:read',
+      error: 'HTTP 403',
+      detail: diagnosis('catalog.catalogs:read'),
+      remedy: FRESH_SIGN_IN,
+    });
+    const rendered = text(render(<ConnectionRow
+          reading={readConnection({ row: row('catalog', { configured: 'a_catalog' }), check: optional, findings: [] })}
+          tone="drifted"
+          saving={false}
+          refreshing={false}
+          requested
+          onSave={() => Promise.resolve(true)}
+          onClear={() => Promise.resolve()}
+        />
+      ),
+    );
+    expect(rendered).toContain('HTTP 403');
+    expect(rendered).not.toContain('What to fix');
+  });
+
+  /** Nothing at all where nothing is short, rather than an empty grey line. */
+  it('says nothing when every optional permission answered', () => {
+    const rendered = renderRegion([
+      refused('semantic-index', 'Vector Search index', 'vectorsearch.vector-search-indexes:read'),
+    ]);
+    expect(rendered).not.toMatch(/connections-optional-scopes/);
+    expect(text(rendered)).not.toContain('Optional permissions');
+  });
+});
+
+describe('a connection row', () => {
+  // The row only awaits these; nothing here is testing the save path, and the
+  // resolved `true` is what the row reads to decide whether to close its editor.
+  const noop = () => Promise.resolve(true);
+  const noopClear = () => Promise.resolve();
+
+  /**
+   * `requested` is what a link from the Architecture diagram sets, and it is also
+   * the only way to get an opened row out of a static render: the row keeps its own
+   * open state and `renderToStaticMarkup` runs no click. So the expanded assertions
+   * below render the arrival case, which is a state real readers land in.
+   */
+  function renderRow(
+    id: string,
+    over: Record<string, unknown> = {},
+    { open = false, check, tone = 'plain' }: { open?: boolean; check?: PreflightCheck; tone?: StatusTone } = {},
+  ) {
+    return render(<ConnectionRow
+        // Through the shared derivation, which is where the row now gets its
+        // verdict from: composing a reading by hand here would let this file
+        // assert a state `readConnection` cannot produce.
+        reading={readConnection({ row: row(id, over), check, findings: [] })}
+        tone={tone}
+        saving={false}
+        refreshing={false}
+        requested={open}
+        onSave={noop}
+        onClear={noopClear}
+      />
+    );
+  }
+
+  /**
+   * The design's right-hand affordance, and it is a promise rather than decoration:
+   * a pencil says a form here will offer to change something, a padlock says it will
+   * not. Getting these the wrong way round would invert the page's central claim on
+   * the one element a reader checks to decide whether opening the row is worth it.
+   *
+   * `agent-endpoint` is the locked case because it is neither runtime-editable nor
+   * stageable -- the endpoint name is baked into the app resource and only a release
+   * moves it. `sql-warehouse` is the pencil case because although no form applies it
+   * either, an intended value CAN be recorded against it, and the design draws that
+   * as a pencil: there is something to do here, even if what it does is record
+   * rather than apply.
+   */
+  it('shows a padlock where nothing can be recorded and a pencil where something can', () => {
+    const locked = renderRow('agent-endpoint', { configured: 'pia-agent-serving' });
+    const writable = renderRow('sql-warehouse', { configured: 'wh-0001' });
+    expect(locked).toMatch(/data-affordance="locked"/);
+    expect(locked).not.toMatch(/data-affordance="write"/);
+    expect(writable).toMatch(/data-affordance="write"/);
+    expect(writable).not.toMatch(/data-affordance="locked"/);
+    // The icon is not the only carrier: an icon is not announced, and a reader on a
+    // screen reader has to be told the row is not changeable here.
+    expect(text(locked)).toMatch(/not changeable here/);
+  });
+
+  /**
+   * The pair the whole expanded row is for. Both panels are always drawn, because
+   * the absence of a measurement is itself the thing being reported and a missing
+   * panel would read as a missing value.
+   */
+  it('draws the configured value beside the one in use, and names where each came from', () => {
+    const rendered = text(renderRow('agent-endpoint', {
+        configured: 'temperature = 0.1',
+        configuredFrom: 'artifact',
+        actual: 'temperature = 0.2',
+        actualObserved: true,
+      },
+        { open: true },
+      ),
+    );
+    expect(rendered).toContain('Configured');
+    expect(rendered).toContain('temperature = 0.1');
+    expect(rendered).toContain('In use');
+    expect(rendered).toContain('temperature = 0.2');
+    // Provenance, so a reader can tell a value somebody recorded from one the
+    // deployment demonstrably reported about itself.
+    expect(rendered).toMatch(/differs from what is configured/);
+  });
+
+  /**
+   * The one case on this page where a value is evidence of a fault rather than a
+   * report of a state, so it is the one case that earns the red tint. Asserted on
+   * the composed markup because the tint is applied by a data attribute the CSS
+   * keys off, and a page that stopped setting it would look healthy while drifting.
+   */
+  it('tints the in-use panel only when the two readings actually disagree', () => {
+    const disagreeing = renderRow('agent-endpoint',
+      { configured: 'temperature = 0.1', actual: 'temperature = 0.2', actualObserved: true },
+      { open: true },
+    );
+    const agreeing = renderRow('agent-endpoint',
+      { configured: 'temperature = 0.1', actual: 'temperature = 0.1', actualObserved: true },
+      { open: true },
+    );
+    expect(disagreeing).toMatch(/data-disagrees="true"/);
+    expect(agreeing).not.toMatch(/data-disagrees="true"/);
+  });
+
+  /**
+   * The honesty rule at its sharpest. An unmeasured value is not an agreeing value,
+   * and a row that drew the configured value into both panels would be claiming a
+   * measurement nobody took. Most rows on the live deployment are in this state.
+   */
+  it('says the used value was never measured rather than echoing the configured one', () => {
+    const rendered = renderRow('catalog',
+      { configured: 'a_catalog', actual: '', actualObserved: false },
+      { open: true },
+    );
+    expect(text(rendered)).toMatch(/not measured/i);
+    expect(rendered).not.toMatch(/data-disagrees/);
+    // And specifically NOT the word that would make an absence look like agreement.
+    expect(text(rendered)).not.toMatch(/\bmatches\b/);
+  });
+
+  /**
+   * A resource with nothing configured must not read as a failure. `llm_gateway` is
+   * unset on every target by design, so nothing probes it and there is nothing wrong
+   * with it -- and a page that badged it red would be reporting the bundle's
+   * intention as a fault.
+   */
+  it('does not render a resource with no configured value as a failure', () => {
+    const rendered = text(renderRow('llm-gateway', { configured: '' }, { open: true }));
+    expect(rendered).not.toMatch(/blocked/i);
+    expect(rendered).toMatch(/not set|nothing to reach/i);
+  });
+
+  /**
+   * The design's drift badge, which this deployment has nothing to put in. It is
+   * implemented and asserted with a constructed finding rather than left out,
+   * because the capability has to exist for the day something drifts -- but nothing
+   * fabricates a value to make the badge appear on the live page.
+   */
+  it('counts each disagreement in the drift badge when there is one to count', () => {
+    const rendered = render(<ConnectionRow
+        reading={readConnection({
+          row: row('agent-endpoint', { configured: 'temperature = 0.1' }),
+          check: undefined,
+          findings: [
+            { id: 'a', resourceId: 'agent-endpoint', severity: 'blocking', detail: 'One value disagrees.' },
+            { id: 'b', resourceId: 'agent-endpoint', severity: 'warning', detail: 'Another disagrees.' },
+          ] as never,
+        })}
+        tone="drifted"
+        saving={false}
+        refreshing={false}
+        requested={false}
+        onSave={noop}
+        onClear={noopClear}
+      />
+    );
+    expect(text(rendered)).toMatch(/Drift\s*\u00d7\s*2/);
+  });
+
+  /**
+   * A finding whose own severity is `unknown` is not a disagreement, and badging it
+   * as one was a live defect: `orchestrator-report-retired` says the agent is
+   * answering normally and deliberately does not report what it used, and the page
+   * rendered a red "Drift ×1" over it. Claiming a disagreement that was never
+   * measured is precisely the dishonesty this page exists to refuse.
+   */
+  it('does not report an unmeasured value as a disagreement', () => {
+    const rendered = render(<ConnectionRow
+        reading={readConnection({
+          row: row('agent-endpoint', { configured: 'temperature = 0.1' }),
+          check: undefined,
+          findings: [
+            {
+              id: 'orchestrator-report-retired',
+              resourceId: 'agent-endpoint',
+              severity: 'unknown',
+              detail: 'The agent is answering normally. It does not send back a list of what it used.',
+            },
+          ] as never,
+        })}
+        tone="plain"
+        saving={false}
+        refreshing={false}
+        requested={false}
+        onSave={noop}
+        onClear={noopClear}
+      />
+    );
+    expect(text(rendered)).not.toMatch(/Drift/);
+  });
+});
+
+describe('the Unity Catalog tables section', () => {
+  const tables = [
+    check('t1', 'ok', {
+      kind: 'table',
+      name: 'a_catalog.a_schema.gold_title_daily_summary',
+      detail: 'The workspace answered: 17 columns.',
+    }),
+    check('t2', 'failed', {
+      kind: 'table',
+      name: 'a_catalog.a_schema.gold_player_geo_summary',
+      detail: 'The workspace refused this identity: HTTP 403 PERMISSION_DENIED.',
+    }),
+    check('t3', 'ok', {
+      kind: 'table',
+      name: 'a_catalog.a_schema.silver_player_activity',
+      detail: 'The workspace answered: 20 columns.',
+    }),
+  ];
+
+  it('draws a row per declared table, with its name, its verdict and the workspace’s own words', () => {
+    const rendered = text(render(<DeclaredTablesTable tableChecks={tables} requestedEntity="" />));
+    expect(rendered).toContain('gold_title_daily_summary');
+    expect(rendered).toContain('gold_player_geo_summary');
+    expect(rendered).toContain('Reachable');
+    expect(rendered).toContain('Blocked');
+    expect(rendered).toContain('17 columns');
+    expect(rendered).toContain('403');
+  });
+
+  /**
+   * A STATUS, NOT AN ESSAY. This cell printed each check's whole detail, so on
+   * the live deployment -- where one missing permission stops every table --
+   * opening the section meant reading the same three-sentence diagnosis twelve
+   * more times, under a panel that had already stated it once. The row keeps what
+   * is about ITS table: the code the workspace answered with, or what it said.
+   */
+  it('gives a table row the workspace’s verdict on it, not the shared diagnosis', () => {
+    const shared =
+      'Your sign-in to this app does not carry `catalog.tables:read`, which the app asks for. ' +
+      'The call stopped there, so nothing was established about whether you can reach the object.';
+    const rendered = render(<DeclaredTablesTable
+        tableChecks={[
+          check('t1', 'unverified', {
+            kind: 'table',
+            name: 'a_catalog.a_schema.gold_one',
+            detail: `HTTP 403. ${shared}`,
+          }),
+          check('t2', 'unverified', {
+            kind: 'table',
+            name: 'a_catalog.a_schema.gold_two',
+            detail: `HTTP 403. ${shared}`,
+          }),
+        ]}
+        requestedEntity=""
+      />
+    );
+    const readable = text(rendered);
+    expect(readable).toContain('HTTP 403.');
+    expect(readable).not.toContain('does not carry');
+    // Not lost, though: the whole sentence is still on the cell for anyone who
+    // wants it, and the explanation is stated once in What to fix above.
+    expect(rendered).toMatch(/title="HTTP 403\. Your sign-in/);
+  });
+
+  /**
+   * The arrival, SAID and not merely tinted. A reader who followed a table name out
+   * of an answer lands on a dozen near-identical monospace rows with one washed
+   * blue, and a wash is decoration until something names it. Asserted on text
+   * because the tint is a class and the sentence is the part a person can read.
+   */
+  it('tells the reader which row the link they followed was about', () => {
+    const arrived = render(<DeclaredTablesTable tableChecks={tables} requestedEntity="a_catalog.a_schema.gold_title_daily_summary" />,
+    );
+    expect(text(arrived)).toContain('Linked from the answer you followed here');
+    // The tint and the announcement land on the same row as the sentence: one
+    // predicate decides all three, so they cannot name different rows.
+    expect(arrived).toMatch(/data-highlighted="true"[^>]*|aria-current="location"/);
+    expect([...arrived.matchAll(/connections-table-arrival/g)]).toHaveLength(1);
+  });
+
+  /**
+   * Said only when it is true. The page is read far more often by someone who
+   * navigated to the tab directly, and telling them they followed a link they did
+   * not follow is a small lie with no upside.
+   */
+  it('says nothing about an arrival when the reader did not arrive from a link', () => {
+    const rendered = render(<DeclaredTablesTable tableChecks={tables} requestedEntity="" />);
+    expect(text(rendered)).not.toContain('Linked from the answer');
+    expect(rendered).not.toMatch(/data-highlighted="true"/);
+  });
+
+  /**
+   * A name that does not match anything must highlight nothing, rather than falling
+   * back to the first row -- an off-by-one here would point a reader at the wrong
+   * table and everything else on the row would corroborate it.
+   */
+  it('highlights nothing when the name asked for is not one of the declared tables', () => {
+    const rendered = render(<DeclaredTablesTable tableChecks={tables} requestedEntity="a_catalog.a_schema.no_such_table" />,
+    );
+    expect(rendered).not.toMatch(/data-highlighted="true"/);
+    expect(text(rendered)).not.toContain('Linked from the answer');
+  });
+
+  /**
+   * The link the answer card builds and the row this table draws have to agree on
+   * one spelling of the name, and they are built by different modules. Asserted
+   * through the query builder the links actually use, so a change to either side
+   * that broke the round trip fails here rather than on screen.
+   */
+  it('matches the row a source link would ask for by name', () => {
+    const name = 'a_catalog.a_schema.silver_player_activity';
+    // Read back out of the href the linking module actually builds, rather than
+    // assumed to be the name verbatim. The two are built by different files and the
+    // round trip is the thing that has to hold; encoding the dots or trimming
+    // differently on either side breaks the arrival and nothing else would notice.
+    const asked = new URLSearchParams(entityHref(name).split('?')[1] ?? '').get(ENTITY_PARAM) ?? '';
+    expect(asked).not.toBe('');
+    const rendered = render(<DeclaredTablesTable tableChecks={tables} requestedEntity={asked} />);
+    expect(text(rendered)).toContain('Linked from the answer you followed here');
+  });
+});
+
+describe('what the page still refuses to claim', () => {
+  /**
+   * The readings the rows draw and the readings the Architecture diagram draws are
+   * one derivation, so a resource cannot be reachable on one tab and unchecked on
+   * the other. Asserted here as well as in the model's own tests because this is
+   * the file that would notice if the page started resolving checks itself.
+   */
+  it('gives every row the same verdict the Architecture diagram is given', () => {
+    const resources = [row('catalog', { configured: 'c' }), row('genie-data', { configured: 'g' })];
+    const checks = [check('catalog', 'ok'), check('genie-data', 'failed')];
+    const readings = readingsById(readConnections(payload({ resources, checks }), []));
+    expect(readings.get('catalog')!.status).toBe('reachable');
+    expect(readings.get('genie-data')!.status).toBe('blocked');
+  });
+
+  /**
+   * A metadata read is not a query, and the live warehouse makes the point: it
+   * answered while STOPPED. The row has to keep saying that reaching a thing is not
+   * a promise about reading data through it.
+   */
+  it('keeps saying that reaching a dependency is not a promise about its data', () => {
+    const rendered = text(render(<PreflightRemedyRow
+          check={check('sql-warehouse', 'ok', {
+            detail:
+              'The workspace answered: named \u201cA Warehouse\u201d, state STOPPED. That is a metadata read. ' +
+              'It does not prove a statement would run.',
+          })}
+        />
+      ),
+    );
+    expect(rendered).toMatch(/metadata read/);
+    expect(rendered).toMatch(/does not prove/);
+  });
+});

@@ -1,0 +1,595 @@
+/*
+ * The agent's mark: the robot from the working animation, at the size the
+ * transcript's rows are built around.
+ *
+ * It was a lucide sparkle inside a filled orange square -- a generic glyph for
+ * "AI", in a tile carrying the meaning, and small enough inside it that most of
+ * what the reader saw was the tile. The app now has a mark of its own, so the mark
+ * is what is drawn: PiaRobotMark, in the working colour, from the one definition
+ * the animation draws from too. See client/src/PiaRobotMark.tsx and the fills in
+ * animation.css.
+ *
+ * NO PLATE BEHIND IT, and it is the robot's own colour that decides that. The tile
+ * was orange because the sparkle had no colour of its own; the robot's body IS the
+ * orange, so a filled orange tile would hide it, and any other fill would mean
+ * inverting the mark to sit on it -- a second version of the same drawing, which
+ * is the one thing this change exists to prevent. Orange on the card's white is
+ * 3.62:1 and on the plan card's wash 3.5:1, both past the 3:1 a non-text mark
+ * needs, so the figure carries itself without one.
+ *
+ * The 32px box stays, and stays square, for two reasons that outlived the tile:
+ * every card in the transcript aligns its header text against it, and it is what
+ * keeps the agent's mark a different shape from the reader's 28px circle of
+ * initials -- a robot beside a monogram survives a greyscale screenshot better
+ * than the square beside the circle ever did.
+ */
+.agent-avatar {
+  display: grid;
+  place-items: center;
+  /* A flex child in every card that draws one, and flex children may shrink below
+     their stated width by default. Without this a long takeaway on a narrow column
+     squeezes the mark rather than wrapping, which is how a mark ends up squashed. */
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+/* Filling the box rather than sitting inside it: the mark's own window already
+   carries four units of margin on every side, so the clearance is in the drawing
+   and a second inset here would only shrink the figure again. Both axes are stated
+   because an SVG with one of them left to the element's attributes draws to the
+   aspect ratio of the attribute rather than of the box -- the fault that left the
+   glyph before this one sitting a few pixels high in its own tile. */
+.agent-avatar svg {
+  width: 32px;
+  height: 32px;
+}
+.app-header {
+  /*
+   * THE HEADER IS THE TOKEN, rather than being measured by whatever is tallest
+   * inside it.
+   *
+   * It used to be a 3px blue top rule plus 9px of padding around a 30px mark,
+   * and --app-header-h was `--logo-mark-size + 22px` to describe that stack.
+   * Every sticky offset in the app subtracts this token, so the arithmetic had
+   * to be maintained by hand against the header's contents -- and it has been
+   * caught wrong once already, reading 52px while the header stood at 58 with
+   * six pixels of the transcript underneath it.
+   *
+   * §1 gives the bar as 52px flat. Stating the height says the same thing and
+   * cannot drift: the lockup's 22px mark, the tabs and the avatar all centre in
+   * it, and a font size changed later moves nothing. The blue top rule went with
+   * the arithmetic; the design reference's chrome (`#16e`) does not have one,
+   * and the border it does have is the bottom hairline.
+   *
+   * The horizontal inset is a token because a second rule depends on it: the
+   * brand column below is the rail's width LESS this inset, since the rail is
+   * measured from the window's edge and the header's contents from inside its
+   * padding.
+   */
+  height: var(--app-header-h);
+  padding: 0 var(--app-header-pad-x);
+  border-bottom-color: var(--ast-hairline);
+  /* Solid, and no blur behind it. The header used to be 88% white over a gradient
+     page with an 18px backdrop blur and a soft drop shadow, which is the frosted
+     chrome DuBois does not have. It separates from the page on its hairline now. */
+  background: var(--background);
+}
+/*
+ * The primary navigation, as tabs on the header's own baseline.
+ *
+ * Full-height items whose active state is a 2px rule along the bottom, which is
+ * the treatment the design gives every tab row in the app. The negative block
+ * margin is how the row reaches the header's bottom hairline through the 9px the
+ * header pads its content by -- without it the underline floats nine pixels above
+ * the edge it is meant to sit on.
+ */
+.app-nav {
+  display: flex;
+  align-self: stretch;
+  /* The negative block margin that used to be here is gone with the header's
+     padding: the row reaches the bottom hairline because the header states its
+     height and the tabs stretch to it, rather than because the row was pulled
+     back through nine pixels of padding. */
+  /* No left margin, deliberately, and the absence is load-bearing. This carried
+     the design's 24px between the wordmark and the first tab, which meant the
+     row began at "wherever the wordmark ended, plus 24" -- a position nobody
+     could state and which landed the first tab across the conversation rail's
+     hairline. The separation is the slack inside .brand-lockup's column now, so
+     there is one rule deciding where the tabs start instead of two. */
+  gap: 4px;
+}
+/*
+ * EVERY TAB HAS THE SAME LEFT INSET, INCLUDING THE FIRST. There is no
+ * `:first-child` rule here any more and one must not come back.
+ *
+ * It used to drop the first tab's `padding-left` to 0, so that its LABEL and its
+ * box began in the same place -- --app-nav-inset clear of the rail's hairline.
+ * That bought the label an alignment nobody asked for and cost it the 12px of
+ * room every other tab's label has, which is what made Ask PIA read as cut off
+ * against the tab's own left edge. It was reported twice.
+ *
+ * The row's position is unaffected by removing it, because the position was never
+ * this tab's padding: it is the width of `.brand-lockup`'s column below, which
+ * still ends --app-nav-inset clear of the rail. So the first tab's BOX -- and
+ * therefore the 2px active rule drawn along the bottom of that box -- is exactly
+ * where it was, and only the icon and label inside it move inward to match the
+ * other tabs. Do not "restore" the alignment by taking 12px off the lockup: that
+ * puts the box back on the rail's hairline, which is the earlier complaint.
+ */
+.app-nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  /* Reserved on the inactive state too, so becoming active cannot lift the label
+     by two pixels. */
+  border-bottom: 2px solid transparent;
+  color: var(--db-slate);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+.app-nav-tab svg {
+  width: 14px;
+  height: 14px;
+}
+/* The wash every outline and ghost control gets under the pointer. */
+.app-nav-tab:hover {
+  color: var(--foreground);
+  background: var(--db-hover-tint);
+}
+/* Keyed on aria-current rather than on a class the router hands the callback,
+   so the state a screen reader is told and the state that is painted are the
+   same fact read twice rather than two facts that can drift. */
+.app-nav-tab[aria-current='page'] {
+  border-bottom-color: var(--db-blue-600);
+  color: var(--db-blue-600);
+  font-weight: 500;
+}
+/* Above the width where the nav collapses into the sheet, the hamburger is not
+   drawn at all; responsive.css turns these two around at 1180px. */
+.mobile-nav {
+  display: none;
+}
+/*
+ * The brand, and the header's first column.
+ *
+ * The width is what makes the nav below it line up, and it is the reason this
+ * rule is not just a flex row. The tabs are laid out after the lockup, so where
+ * the first one lands used to be whatever the wordmark happened to measure --
+ * about 202px of type, which put "Ask PIA" a dozen pixels to the LEFT of the
+ * conversation rail's right edge. The tab therefore straddled the rail's
+ * hairline: two vertical lines a few pixels apart, neither of them straight.
+ *
+ * Stating the column instead makes the first tab's position arithmetic rather
+ * than a measurement of a string. The lockup occupies exactly the rail's width
+ * less the header's own inset, so the box after it begins where the rail's edge
+ * falls, whatever the wordmark is later changed to say. Both numbers are the
+ * tokens the rail and the header are themselves drawn from, so the two cannot
+ * drift apart the next time either moves -- which is the whole point, and what
+ * client/src/brand-mark.test.ts refuses to let anyone undo by retyping 264.
+ *
+ * The 24px that used to sit on .app-nav as a stated gap is gone with it. It is
+ * now the slack left inside this column (around 42px at the wordmark's current
+ * length), because a gap AND a column width would be two rules deciding one
+ * position, and the column has to win for the alignment to hold.
+ *
+ * THE THIRD TERM IS WHAT MOVED, and it is the one that was reported. Landing the
+ * first tab exactly ON the rail's edge is not the same as landing it clear of
+ * the rail: the tab's box began in the same pixel column as the rail's vertical
+ * hairline, so the tab read as leaning on the divider and the active underline
+ * met it in a corner. --app-nav-inset offsets the whole row by the rail's own
+ * padding, and it is added HERE rather than to the first tab because the tab is
+ * one item and the row is what has to move -- see the token for the arithmetic.
+ *
+ * Below 1180px the nav is not drawn at all and responsive.css relaxes this to
+ * `flex: 0 1 auto`, which is what lets the wordmark truncate on a phone rather
+ * than holding a column open against nothing.
+ */
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  /* §1's gap between the lockup and the divider that follows it. The 8px inside
+     the lockup, between mark and wordmark, is the component's own. */
+  gap: 14px;
+  width: calc(var(--conversation-width) - var(--app-header-pad-x) + var(--app-nav-inset));
+}
+/*
+ * The lockup inside the header's first column.
+ *
+ * The partner plate and the "PLAYER INTELLIGENCE" kicker that used to be here
+ * are gone. The plate reserved a position for a customer trademark this
+ * repository must not carry, and the kicker was a second name under the first.
+ * §1 replaces both with one lockup: the mark, and the app's name in lowercase.
+ *
+ * There is almost nothing left to declare, because the lockup is a component and
+ * its two sizes are its own (astrolabe-mark.css). What is here is the header's
+ * business: the wordmark is the part that gives when the row is tight, so it
+ * truncates while the mark and the tabs hold their ground.
+ */
+.brand-lockup .ast-lockup {
+  min-width: 0;
+}
+.brand-lockup .ast-wordmark {
+  min-width: 0;
+}
+/*
+ * The 40px redeclaration of .agent-avatar that used to sit here is gone.
+ *
+ * This file declared the mark twice, at 32px above and again at 40px here, and the
+ * second won everywhere -- so every card in the transcript drew a 40px mark while
+ * the recipe says 32px, and answer.css had to correct it back for the two cards it
+ * owns with a note saying the real fix belonged in this file. It did. The loading
+ * card and the clarification card were never corrected and had been 40px all along,
+ * which is why the agent's mark changed size between a turn arriving and the same
+ * turn finishing.
+ *
+ * The glyph is 17px, up beside the box it sits in, and it now states its height as
+ * well: width alone left the SVG 17 by 24, so preserveAspectRatio drew a 17px glyph
+ * sitting a few pixels high in its own tile.
+ */
+/* Flex children default to min-width:auto, so nothing in the header could shrink
+   and a long signed-in name pushed the gear past the right edge. The chips are
+   the part that gives: the brand and the nav are navigation, while these are
+   informational and carry the full value in a title attribute. */
+.app-header > .brand-lockup,
+.app-header > nav {
+  flex: none;
+}
+/* The width rule that lets the wordmark truncate once the chips are gone is in
+   responsive.css, with the rest of the breakpoint set. */
+/* The chips take the free space to the right of the nav; the gear takes it instead
+   at the widths where the chips are not drawn (responsive.css). */
+.identity-chips {
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.header-settings {
+  margin-left: 8px;
+}
+.mobile-nav {
+  margin-left: 8px;
+}
+/* The "Signed in <local part>" chip that used to live here is gone. §1's cluster
+   is role chip, avatar, divider, attribution, and the avatar carries the address
+   on `title` and to a screen reader -- see .identity-avatar in
+   astrolabe-chrome.css. The chip spent about 140px of a header that also holds
+   seven tabs, and truncated at exactly the widths where it mattered. */
+/*
+ * The OAuth badge: whether the sign-in this browser presented carries what the
+ * app asks for. First in the right-hand cluster, ahead of the role badge, per
+ * role.ts's HEADER_CLUSTER_ORDER.
+ *
+ * A CHIP, WHERE THE ROLE BADGE IS A PILL, and the difference is the point rather
+ * than an inconsistency between two things a centimetre apart. The pill labels
+ * who somebody is. This is the app's status badge -- 1px edge, 4px radius, wash
+ * fill, coloured text -- which is the treatment Connections gives a dependency
+ * that answered or refused, and this is the same kind of fact: something was
+ * checked, and here is the result. The Identity card on that page draws the same
+ * badge for the same report, so the two surfaces have to match.
+ *
+ * COLOUR IS NEVER THE ONLY SIGNAL. Each state carries a mark -- a tick, a cross,
+ * a dash -- because the whole content of this badge is its state, and green and
+ * red are the two hues most often indistinguishable to a reader.
+ *
+ * THE RECIPE IS `.ast-pill`. §2 allows the app one status chip and this was a
+ * second one, keeping its own 1px edge, its own 4px radius and its own 12px
+ * against the db- washes the rebuild retires. The families are the recipe's now
+ * and are chosen in OAuthBadge.tsx, so the badge follows a repaint of the
+ * palette instead of being the one status surface that did not. What is left
+ * here is `flex: none` and `nowrap`, which are the header cluster's rather than
+ * a chip's, and the resolving state below.
+ */
+.oauth-badge {
+  flex: none;
+  white-space: nowrap;
+}
+/*
+ * Nothing established yet, so the chip says nothing and holds its shape --
+ * otherwise the whole cluster shifts left when the identity read lands.
+ *
+ * THE WIDTH IS THE CONTENT'S, NOT A NUMBER'S. This rule used to read `width:
+ * 62px; height: 22px`, measured once against the drawn states and true only for
+ * as long as nothing about them moved; taking the pill's 11px in place of the
+ * old 12px would have falsified it, and re-measuring needs a browser. The badge
+ * now renders a mark and the word inside it and makes them invisible, so the box
+ * is exactly the size of what will replace it at whatever type size, and stays
+ * so under a change of font or of the word. See OAuthBadge.tsx.
+ *
+ * No family, because none of the five is right for "not yet": a status tint here
+ * would be a fourth state, and the recipe's transparent border already leaves no
+ * edge. The fill is the palette's plain band grey, which is furniture.
+ */
+.oauth-badge[data-oauth-state='resolving'] {
+  background: var(--ast-fill-band);
+}
+/*
+ * `visibility: hidden` and not `opacity: 0`, and the difference is the whole
+ * point of the element. Both keep the box; only this one takes the contents out
+ * of the paint AND out of the accessibility tree, so nothing here can be read
+ * out or found by a search. The badge is `aria-hidden` while resolving as well,
+ * which is belt and braces on purpose: this is a spacer that happens to be made
+ * of words, and it must never be mistaken for a report.
+ *
+ * `gap: inherit` rather than a repeated 4px: the drawn states get their gap from
+ * the recipe, so the spacer takes the same value from the box it sits in and
+ * cannot come to differ from it.
+ */
+.oauth-badge-reserve {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  visibility: hidden;
+}
+/*
+ * The role badge, second in the right-hand cluster and immediately left of the
+ * name. The order is role.ts's HEADER_CLUSTER_ORDER and it comes from the
+ * markup, not from here: this file must never reorder it with `order` or
+ * `row-reverse`, because that would put what is painted and what a screen
+ * reader is read into disagreement, and the order has already been corrected
+ * once.
+ *
+ * A PILL, AND THAT IS THE POINT. 999px radius, no border, in every state.
+ * `docs/design-handoff-pia-dubois-revamp/role-badge.md` says why in one line
+ * worth keeping in front of whoever edits this next: every button in this app is
+ * 4px with a border, so a pill can never be mistaken for one. There is nothing
+ * to press here. It is a label for an answer the server already gave.
+ *
+ * That supersedes the earlier treatment, which built the badge on the identity
+ * chip's shell -- 4px radius, 1px --db-line-strong, 30px floor -- so the pair
+ * read as two chips of one cluster. It read as two chips, and one of them looked
+ * pressable.
+ *
+ * DO NOT ADD A BORDER TO ANY STATE. Not to the admin state to strengthen it, not
+ * to the resolving state to give the empty pill an edge. A 1px edge is the one
+ * thing that would put it back in the button family.
+ */
+.role-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  /* The shield's gap. No effect on the three states that have no icon. */
+  gap: 5px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  /* Sentence case, never uppercase and never one letter: "A" and "C" are
+     indistinguishable from the initials this same header draws a few pixels
+     away. role.ts holds the words; this only stops a stylesheet transforming
+     them. */
+  text-transform: none;
+  /* The label is two words at most and truncating either would leave
+     "Role unkno". It is 12px in a header with room; it does not need to shrink. */
+  white-space: nowrap;
+}
+/* Blue is the identity colour, which is what this pill is reporting. A solid
+   pale tint rather than --db-selected-tint's 6% wash, because a wash takes its
+   effective colour from whatever is behind it and this one has to guarantee a
+   ratio: #0E538B on #DDEAF4 is 6.52:1.
+
+   The astrolabe spelling of the same two values. §2 calls this family info, and
+   names role chips as one of the three things that take it, which is why the
+   pill asks for the family rather than for a blue: --db-blue-700 is the hover
+   step of the action colour and this is not an action. */
+.role-badge[data-role-state='admin'] {
+  background: var(--ast-info-fill);
+  color: var(--ast-info-text);
+}
+/* The ordinary case, so it is the neutral family and nothing louder.
+
+   MOVED ONTO THE PALETTE, and this pair was genuinely off it. --db-chip #E8ECF0
+   and --db-grey-blue #445461 are DuBois values that predate the astrolabe
+   neutral, which is #46596B on #F2F6F9 -- so the one pill in the header that is
+   drawn three times out of four was a slightly different grey from every neutral
+   chip on the pages under it. The astrolabe pair is lighter and bluer, and
+   role-badges.md computes it at 6.7:1, so the ratio this rule was protecting
+   improves rather than moving. */
+.role-badge[data-role-state='consumer'],
+/*
+ * Role unknown is not a role, and it must not be mistakable for one -- but it is
+ * not an alarm either, so it takes the consumer pill exactly. The WORD is the
+ * whole distinction, and it has to be, because "status never rides on colour
+ * alone" is a rule this app applies everywhere else.
+ *
+ * This was red -- the app's failure wash and line -- on the argument that a read
+ * which should have worked and did not is a failure rather than an absence. That
+ * is a fair reading and it was not the agreed one, and it costs more than it
+ * looks: an identity read that hiccups puts an alarm in the header of a reader
+ * whose app is working, beside a navigation that has quietly and correctly
+ * fallen back to the consumer set. The tooltip already says to reload. Restoring
+ * red means changing the handoff and sections 4.2 and 4.3 first, not this rule.
+ *
+ * Sharing the consumer selector rather than repeating its two declarations, so
+ * the two cannot drift apart the way they did once already.
+ */
+.role-badge[data-role-state='failed'] {
+  background: var(--ast-neutral-fill);
+  color: var(--ast-neutral-text);
+}
+/*
+ * Nothing to say yet, so it says nothing and holds a shape. 64x22, fixed, from
+ * the handoff: no spinner, no text, no shimmer, because the badge never guesses.
+ *
+ * THE CLUSTER SHIFTS WHEN THE ROLE LANDS, and that is the handoff's choice
+ * rather than an oversight here. The earlier treatment reserved one 96px width
+ * for all four states, sized to "Role unknown", specifically so it would not --
+ * and 64px is narrower than every label that replaces it. Widening it back to 96
+ * would be quietly overruling a specified dimension, so it is left as drawn and
+ * reported instead. The padding here is the base rule's, harmless on an empty
+ * pill, and the fill is the neutral family rather than --db-skeleton so that the
+ * placeholder is the same grey as the pill that replaces it in three of the four
+ * states. That is why it has to move with them: left on --db-chip it would have
+ * been the one state a shade off the three it stands in for, and the shift would
+ * show at exactly the moment the role lands.
+ *
+ * It cannot sit here indefinitely: the identity read has a deadline in
+ * app-state.ts, after which this becomes "Role unknown".
+ */
+.role-badge[data-role-state='resolving'] {
+  width: 64px;
+  height: 22px;
+  padding: 0;
+  background: var(--ast-neutral-fill);
+}
+nav a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* This rule used to open with `display: block`, to undo AppKit's grid, which puts
+   every direct child of an alert description on a row of its own and so turned a
+   sentence with an inline <strong> in it into a list. That pin is a defect and the
+   handoff records it as one: it is unlayered, Tailwind's utilities are not, so a
+   `flex` written at a call site was silently ignored and the layout the author
+   wrote never happened. It is gone, and the description is laid out by whatever
+   the call site asks for — AppKit's stacking grid if it asks for nothing.
+
+   What that costs is the sentence problem coming back for any call site that puts
+   bare inline siblings straight inside a description. The answer there is to wrap
+   the sentence in one child, which is what the rest of the app already does, and
+   client/src/alert-layout.test.ts now checks the half of it that can be checked
+   from the source.
+
+   The two lines after the colour are unrelated and stay. They are what stop an
+   alert running off the right edge: the Alert root is `grid-cols-[16px_1fr]`, and
+   an `fr` track floors at the item's min-content, so a single long unbroken token
+   (a connection string in a server error, a path in a remedy) widens the whole
+   grid past its container rather than wrapping. min-width:0 lets the track shrink
+   and overflow-wrap makes min-content small enough that it does not have to.
+   Neither breaks ordinary prose, which has spaces to wrap at long before either
+   rule is reached. */
+[data-slot='alert-description'] {
+  color: var(--db-body);
+  line-height: 1.55;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-slot='alert-description'] strong {
+  color: var(--foreground);
+}
+/* The neutral tone: the wash and a hairline, per the handoff's alert recipe. It
+   was 92% white over a gradient, which read as a card that had not finished
+   loading once the gradient went. */
+[data-slot='alert'] {
+  border-color: var(--db-line);
+  background: var(--db-wash);
+}
+/* The chip's second home, at the bottom of the navigation sheet. Drawn only at the
+   widths where the header is too narrow to carry it, which responsive.css decides:
+   two copies of the same chip on one screen is the state this used to reach at
+   exactly 768px, when the header's `md:flex` and the sheet's `md:hidden` were read
+   off two different breakpoint systems. */
+.mobile-identity {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+/* Every eyebrow in the app is slate, which is the colour the handoff gives them and
+   one rung quieter than the graphite they used to be. They are small, bold, and
+   everywhere — page headings, the conversation rail, the trace panel — and they are
+   labels rather than content, so they sit under the ink they introduce rather than
+   beside it. 11px/700 on slate is 5.02:1 on white and 4.69:1 on the wash. Amber
+   could never do this job at 1.90:1, and orange could not either at 3.62:1. */
+.section-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 1;
+  /* The design's eyebrow tracking is +0.06em to +0.08em; this was +0.09em, wide
+     enough that a two-word eyebrow read as two labels. */
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--db-slate);
+  font-weight: 700;
+}
+
+/* ── The storage banner ──────────────────────────────────────────────────────
+ *
+ * The one strip allowed to push every page down, and the only place in the app
+ * where two tones of the same component sit in the same slot: a danger alert
+ * when the store is refusing or unreachable, and a neutral information strip
+ * when it is answering and holds nothing. Which of the three sentences it says
+ * is storage-banner-copy.ts's decision; this is only how each tone is drawn.
+ *
+ * The tones themselves come from rules that already exist: the neutral one from
+ * `[data-slot='alert']` above, the danger one from alerts.css. What is left here
+ * is the strip around the alert and the four blocks inside it.
+ */
+.storage-banner {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--db-line);
+  background: var(--background);
+}
+/* 4px, which is the radius the design gives every alert. Scoped to this banner
+   rather than written against `[data-slot='alert']`, because the rest of the
+   app's alerts are other screens' work and are being restyled alongside this. */
+.storage-banner [data-slot='alert'] {
+  border-radius: var(--radius-sm);
+}
+.storage-banner [data-slot='alert-description'] {
+  gap: 8px;
+}
+/*
+ * The heading over the detail, as two blocks.
+ *
+ * These were inline siblings, separated by a flex `gap` on an element that was
+ * pinned to `display: block` app-wide and so was never a flex container -- which
+ * is how the banner shipped reading "Nothing stored yet.Lakebase is connected".
+ * The pin is gone now and the description is AppKit's stacking grid again, so the
+ * two are wrapped in one child of it and separated here, where the separation is
+ * a property of the two lines rather than of a container that might not be one.
+ */
+.storage-banner-say strong {
+  display: block;
+  font-weight: 700;
+  color: var(--foreground);
+}
+.storage-banner-say span {
+  display: block;
+  margin-top: 2px;
+  color: var(--db-body);
+}
+.storage-banner-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--db-slate);
+}
+/* The way to Connections, and the one blue thing in the banner: it is the action,
+   and everything above it is a report. */
+.storage-banner-note a {
+  color: var(--db-blue-600);
+  font-weight: 500;
+}
+/*
+ * The grant command, in a shape that can be selected in one gesture.
+ *
+ * `user-select: all` rather than a Copy button, which is the treatment the spec
+ * records for this particular value: it is long, it is the whole point of the
+ * banner, and a click that selects it is one fewer control in a strip that is
+ * already interrupting the reader. It wraps rather than scrolling, because a
+ * command running off the right edge of a full-width strip cannot be read at all.
+ */
+.storage-banner-command {
+  margin: 0;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--db-code-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}

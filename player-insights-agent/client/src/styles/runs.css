@@ -1,0 +1,623 @@
+/*
+ * Run Explorer.
+ *
+ * Two columns: a 340px list of runs and the selected run read four ways. The
+ * list is the navigation and the right column is the document, so the list is
+ * the side that gets a card and the detail side does not -- a card around the
+ * detail put a second border inside the page's own margins and made the tabs
+ * look like a widget rather than the page.
+ *
+ * The Gantt and the roll-up inside the Timeline tab belong to timeline.css.
+ * Nothing here reaches into them.
+ */
+
+/*
+ * The page heading, at the handoff's size rather than the shared one.
+ *
+ * page-shell.css still asks for clamp(28px, 4vw, 38px), which is two rungs
+ * above the 22px the DuBois scale gives an h2 and is the last of the old
+ * display sizes left on this page. Scoped rather than changed there, because
+ * that file is shared with three other pages being restyled in parallel.
+ */
+.run-explorer .page-heading h2 {
+  font-size: var(--text-h-page);
+  letter-spacing: -0.01em;
+  margin: 0 0 2px;
+}
+/* There was an eyebrow above the h2 here, reading PROGRESSIVE TRACE DISCLOSURE,
+   with a grid wrapper to close the page gap under it. It named the mechanism the
+   page is built on rather than the page, which is the one thing an eyebrow may
+   not do -- and the heading's own description already says what is on the screen.
+   The wrapper went with it: PageHeading is the only child now. */
+/* No border. It used to be a bordered pill, which read as something to press
+   next to a switch that already is. */
+.advanced-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 4px;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+/* The copy beside a truncated id. Sized to the line it sits on rather than to a
+   button's own minimum, because a row that is mostly identifier has no room for
+   a control with a label. */
+.copy-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-sm);
+  color: var(--db-slate);
+  background: #fff;
+  cursor: pointer;
+}
+.copy-value:hover {
+  color: var(--db-ink);
+  background: var(--db-wash);
+}
+.copy-value > svg {
+  width: 12px;
+  height: 12px;
+}
+/* One row, not a titled card: the mark, the id, the copy, and the link pinned
+   right. `min-width: 0` on the code is what lets the id take the space the link
+   does not, instead of pushing the link off the row. */
+.trace-id-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.trace-id-row > code {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--db-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trace-id-row > a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  color: var(--db-blue-700);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.trace-id-row > a > svg {
+  width: 13px;
+  height: 13px;
+}
+.trace-id-note {
+  margin-left: auto;
+  color: var(--db-slate);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+/* The generated SQL. Each statement is its own block so the reader can see where
+   one ends, which a single wrapped field could not show. */
+.sql-panel {
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.sql-panel-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--db-line);
+  background: var(--db-wash);
+  font-size: var(--text-sm);
+}
+.sql-panel-head > b {
+  font-weight: 700;
+}
+.sql-panel-head > span {
+  color: var(--db-slate);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.sql-panel-head > .copy-value {
+  margin-left: auto;
+}
+.sql-panel > pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sql-panel > pre + pre {
+  border-top: 1px solid var(--db-line);
+}
+/* A continued clause is indented, so a wrapped WHERE cannot be mistaken for the
+   next clause down. */
+.sql-line {
+  display: block;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
+}
+.sql-line > b {
+  color: var(--db-blue-700);
+  font-weight: 500;
+}
+/* What the trace amounts to, with the trace behind a caret. */
+.trace-summary {
+  border: 1px solid var(--db-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.trace-summary-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+}
+.trace-summary-head > b {
+  font-weight: 500;
+}
+/*
+ * THE FACE IS NOT SET HERE, and that is the change. This rule put the whole line
+ * in DM Mono -- "total", "tool calls" and "stages" along with the three figures
+ * they label -- which is §3 read backwards. The face belongs to the number, so
+ * `.ast-num` on each figure carries it and the words around them stay in the body
+ * face. See RunDetails.tsx.
+ */
+.trace-summary-head > span {
+  color: var(--db-slate);
+  font-size: var(--text-xs);
+}
+.trace-summary-head > button {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+  color: var(--db-ink);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+/* Same split on the caret's own count: the line count is mono, "lines" is not. */
+.trace-summary-head > button > span {
+  color: var(--db-slate);
+  font-size: var(--text-xs);
+}
+.trace-summary-head > button > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--db-slate);
+  transition: transform 120ms ease;
+}
+.trace-summary-head > button[aria-expanded='true'] > svg {
+  transform: rotate(90deg);
+}
+.trace-summary > pre {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 420px;
+  border-top: 1px solid var(--db-line);
+  background: var(--db-wash);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  overflow: auto;
+}
+/* Static panels carry a hairline and nothing else, and there are exactly two
+   radii. AppKit's Card ships `shadow-sm` and `rounded-xl`; both are utilities,
+   so a plain rule outranks them. */
+.run-explorer [data-slot='card'] {
+  box-shadow: none;
+  border-radius: var(--radius-md);
+}
+.explorer-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.run-list {
+  position: sticky;
+  top: calc(var(--app-header-h) + 24px);
+  max-height: calc(100vh - var(--app-header-h) - 46px);
+  overflow: auto;
+}
+.run-list [data-slot='card-title'] {
+  font-size: var(--text-h-sub);
+  font-weight: 700;
+}
+/* The search field's leading icon sits in the field rather than beside it, so
+   the 340px column spends none of its width on a second box. */
+.run-search {
+  position: relative;
+  display: block;
+}
+.run-search svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 13px;
+  height: 13px;
+  transform: translateY(-50%);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.run-search input {
+  padding-left: 30px;
+}
+.run-list [data-slot='card-content'] {
+  display: grid;
+  gap: 6px;
+}
+
+/*
+ * A run row is a card rather than a list line, because the prompt wraps to two
+ * or three lines and a bordered block is what keeps the status, the date and
+ * the person reading as one run's worth of detail.
+ *
+ * Selection is the blue edge on a faint blue ground, the same language the
+ * conversation rail uses, and the border is present in both states so picking a
+ * row cannot move the row below it.
+ */
+.run-item {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+.run-item:hover {
+  border-color: var(--primary);
+  background: var(--db-row-hover);
+}
+.run-item.active {
+  border-color: var(--primary);
+  background: var(--db-selected-tint);
+}
+.run-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* The head is a two-child row with the date pushed to the far end, so the pills
+   are grouped rather than added as siblings: a third child would be spread by
+   the space-between above and land the date in the middle of the row. */
+.run-item-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+/*
+ * THE FACE IS NOT SET HERE. `font-variant-numeric: tabular-nums` stood alone on
+ * this rule and on the rating below it, which is a declaration with nothing to
+ * apply: the shipped DM Sans build carries no `tnum` feature, so asking for
+ * tabular figures in it changes nothing at all and the column stayed ragged
+ * while the stylesheet said it was even. §3 answers exactly this case -- numeric
+ * cells render in DM Mono instead -- and `.ast-num` on the element is that
+ * answer. Same inert pair the timeline carried; see timeline.css.
+ */
+.run-item-date {
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+.run-item-prompt {
+  font-weight: 500;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.run-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+/*
+ * The status pill.
+ *
+ * Duplicated in benchmark.css rather than shared, deliberately: the two files
+ * are the two screens, and a pill defined in one and used by the other is how a
+ * restyle of one page silently repaints the other. The recipe is four lines.
+ */
+.run-pill {
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  /* The store's own word for the status, with its first letter raised rather
+     than a label of this page's choosing: a status nobody here recognises still
+     reads as itself. */
+  text-transform: capitalize;
+  border: 1px solid var(--db-line-strong);
+  background: transparent;
+  color: var(--db-body);
+}
+.run-pill.tone-ok {
+  border-color: var(--db-green-line);
+  background: var(--db-green-wash);
+  color: var(--db-green-600);
+}
+.run-pill.tone-bad {
+  border-color: var(--db-red-line);
+  background: var(--db-red-wash);
+  color: var(--db-red-600);
+}
+/* Degraded, not evaluated: the wash is the amber one and the type is the drift
+   rung, because amber itself is 1.90:1 and cannot be a label. */
+.run-pill.tone-degraded {
+  border-color: var(--db-amber-line);
+  background: var(--db-amber-wash);
+  color: var(--db-warn-600);
+}
+/* A run's own rating, which is the only evaluation on this list. Amber fills the
+   glyph and ink outlines it, which is what makes a 1.90:1 fill readable; the
+   number beside it is body text and does not borrow the fill. */
+/* The score takes the face on the element, for the reason `.run-item-date` gives
+   at length. The star and the separator are not figures and do not. */
+.run-item-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--foreground);
+}
+.run-item-rating svg {
+  width: 13px;
+  height: 13px;
+  fill: var(--db-amber);
+  stroke: var(--db-ink);
+  stroke-width: 1.5;
+}
+
+/* ---- the detail side ---- */
+.run-detail {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+.run-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.run-detail-title {
+  margin: 0;
+  font-size: var(--text-h-section);
+  font-weight: 700;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+/* Who and what, under the prompt: the id chip, the person, the status pill. It
+   wraps rather than truncating, because each part is now its own object and the
+   one that would have fallen off the end is the status. */
+.run-detail-ident {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+/*
+ * The id, as much of it as is worth showing.
+ *
+ * A control rather than a label: pressing it puts the WHOLE id on the clipboard,
+ * which is the form anyone actually wants it in -- to paste into MLflow, or into
+ * a ticket. What renders is the twelve-character prefix, so the header cannot be
+ * pushed onto a second line by a value nobody reads end to end.
+ */
+.run-id-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 7px;
+  border: 1px solid var(--db-line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+}
+.run-id-chip:hover {
+  background: var(--db-hover-tint);
+}
+/* Mono, because it is a value to be compared against MLflow rather than prose,
+   and tabular so two ids of the same length are the same width. */
+.run-id-short {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.run-id-chip > svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--db-slate-icon);
+}
+.run-detail-user {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The pill's glyph, which only the complete tone carries. Sized here because the
+   pill is the run list's recipe and the icon is the header's addition to it. */
+.run-pill > svg {
+  width: 12px;
+  height: 12px;
+}
+/*
+ * The two things a status pill on this page needs that the shared recipe does not
+ * give it, and NOTHING ELSE.
+ *
+ * `.ast-pill` in astrolabe-tokens.css is the one recipe -- 1px border, tint, 4px
+ * radius, 11px/500 -- and this does not restate any of it. What it adds is the
+ * store's own word raised at its first letter, so a status nobody here recognises
+ * still reads as itself, and the check glyph's size. Both were on `.run-pill`,
+ * which is where the app said them before; neither is a colour, so neither can
+ * become a second recipe.
+ *
+ * `.run-pill` above stays defined because the conversation rail's own pill is
+ * written against it -- rail-run-summary.test.ts holds the two together -- and
+ * that stylesheet is not this lane's to move. No Run Explorer surface renders it
+ * any more.
+ */
+.run-status-pill {
+  text-transform: capitalize;
+}
+.run-status-pill > svg {
+  width: 12px;
+  height: 12px;
+}
+/* The run's own figures, at the other end of the line from its identity, with
+   the badges that qualify the trace under them. */
+.run-detail-figures {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.run-detail-flags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/*
+ * Measurements: the wall time, the call count and the rating, read against the
+ * same figures on the Overview tiles beside them.
+ *
+ * THE FACE IS NOT SET HERE. `.ast-num` on the element is what puts these in DM
+ * Mono, because §3's rule is about where a number sits rather than about which
+ * rule found it, and one class is what lets that be checked in one place. The
+ * `font-family` and `font-variant-numeric` this used to carry were the same
+ * intention written locally, and the `tabular-nums` half of it did nothing at all:
+ * DM Sans declares no such feature, so the declaration read as done.
+ */
+.run-detail-meta {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+/*
+ * In-page tabs get the header's own underline treatment rather than AppKit's
+ * segmented pill, so "which view am I in" looks the same in the page as it does
+ * in the nav. The list is a rail with a hairline under the whole row.
+ */
+.run-detail [data-slot='tabs-list'] {
+  gap: 24px;
+  height: auto;
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+.run-detail [data-slot='tabs-trigger'] {
+  flex: none;
+  height: auto;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  /* 13px/500, which is the tab row the handoff specifies rather than the page's
+     base size: the row is chrome above the view and reads as a rail, not as body
+     copy with a line under one word. */
+  font-size: var(--ast-fs-13);
+  color: var(--ast-text-secondary);
+}
+/*
+ * The view you are in: the one blue, on the type and on the 2px rule under it.
+ *
+ * `--ast-blue` rather than `--primary` because the two are the same value today
+ * and only one of them is guaranteed to stay it. The tab row is the surface where
+ * "which view am I in" is the entire question, so it reads the token that the
+ * palette check covers.
+ */
+.run-detail [data-slot='tabs-trigger'][data-state='active'] {
+  border-bottom-color: var(--ast-blue);
+  background: transparent;
+  color: var(--ast-blue);
+  font-weight: 500;
+}
+
+/*
+ * The final answer, as the one card on the detail side.
+ *
+ * The eyebrow names it and the robot says who wrote it -- the same agent mark the
+ * transcript uses, from the same definition, so a stored answer read back weeks
+ * later is marked as coming from the place the live one came from. That is the
+ * whole reason this mark is not drawn locally: two copies would agree today and
+ * would be the last thing anybody thought to compare after a retune.
+ */
+.final-answer [data-slot='card-content'] {
+  display: grid;
+  gap: 10px;
+}
+.final-answer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* No plate, no radius and no colour of its own, for the reasons .agent-avatar
+   states at length: the orange is the robot's body, so a tile behind it would
+   either hide the mark or require a second, inverted version of it. Its twin on
+   the ask hero is the same 18px square drawing the same figure. */
+.final-answer-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+.final-answer-mark svg {
+  width: 18px;
+  height: 18px;
+}
+.final-answer-eyebrow {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.final-answer-takeaway {
+  margin: 0;
+  font-size: var(--text-h-section);
+  font-weight: 700;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.final-answer-open {
+  color: var(--primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  justify-self: start;
+}
